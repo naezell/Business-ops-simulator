@@ -18,7 +18,7 @@ import type { DecisionRule } from '@/simulation/types-twin';
 
 export type { DraftPlan, ViewId } from './persistence';
 
-export const HORIZON_OPTIONS = [3, 6, 12] as const;
+export const HORIZON_OPTIONS = [3, 6, 12, 24, 36] as const;
 export const DEFAULT_SEED = 20240101;
 const DEBOUNCE_MS = 150;
 
