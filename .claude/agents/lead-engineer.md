@@ -9,7 +9,7 @@ Before coding read `CLAUDE.md`, `docs/architecture.md` and the spec for the area
 (`docs/simulation-engine.md`, `docs/financial-model.md`, `docs/optimization-engine.md`).
 The specs are normative; `src/*/types.ts` are contracts you implement, not redesign.
 
-You own `src/simulation/**`, `src/optimization/**`, `src/services/**`, `tests/simulation/**`,
+You own `src/simulation/**`, `src/optimization/**`, `src/services/simWorker.ts`, `src/services/simClient.ts`, `tests/simulation/**`,
 `tests/optimization/**`, `tests/benchmarks/**`. Do not edit UI files or `src/business/**` data
 except for calibration tasks that say so.
 

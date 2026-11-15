@@ -56,8 +56,8 @@ values are illustrative assumptions — never describe them as benchmarks.
 
 | Model | Agent file | Owns |
 |---|---|---|
-| Opus | `.claude/agents/lead-engineer.md` | `src/simulation`, `src/optimization`, `src/services`, integration, calibration |
-| Sonnet | `.claude/agents/frontend-engineer.md` | `src/components`, `src/pages`, `src/App.tsx`, styling |
+| Opus | `.claude/agents/lead-engineer.md` | `src/simulation`, `src/optimization`, `src/services/simWorker.ts` + `simClient.ts`, integration, calibration |
+| Sonnet | `.claude/agents/frontend-engineer.md` | `src/components`, `src/pages`, `src/App.tsx`, styling, `src/services/store.ts` + `persistence.ts` + `format.ts` |
 | Haiku | `.claude/agents/support-engineer.md` | `src/business/*` data, `tests/fixtures`, simple unit tests, docs upkeep |
 | Fable (architect) | — | contracts, specs, ADRs; consulted only per `docs/handoffs/opus-development-handoff.md` §"When to escalate" |
 

@@ -44,10 +44,10 @@ src/
     registry.ts      id → IndustryDefinition
     landscaping/
   services/        Glue; the only place that knows about workers and storage.
-    simWorker.ts     Web Worker: runs simulations/optimizations off the main thread
-    simClient.ts     promise API over the worker
-    persistence.ts   load/save scenarios (localStorage)
-    store.ts         Zustand store: baseline, draft, results, optimizer state
+    simWorker.ts     Web Worker: runs optimizations off the main thread   (Opus)
+    simClient.ts     promise API over the worker                          (Opus)
+    persistence.ts   load/save scenarios (localStorage)                   (Sonnet)
+    store.ts         Zustand store: baseline, draft, results              (Sonnet)
   components/      Reusable React pieces (charts, map, controls, KPI tiles)
   pages/           Top-level views
 tests/

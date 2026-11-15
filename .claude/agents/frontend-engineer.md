@@ -9,7 +9,8 @@ Before coding read `CLAUDE.md`, `docs/architecture.md` (§UI), `docs/product-vis
 `docs/handoffs/sonnet-task-backlog.md`. Types you consume: `src/simulation/types.ts`,
 `src/optimization/types.ts`, `src/business/types.ts`.
 
-You own `src/components/**`, `src/pages/**`, `src/App.tsx`, `src/main.tsx`, `src/index.css`.
+You own `src/components/**`, `src/pages/**`, `src/App.tsx`, `src/main.tsx`, `src/index.css`,
+`src/services/store.ts`, `src/services/persistence.ts`, `src/services/format.ts`.
 Do not edit `src/simulation`, `src/optimization` or `src/business`; if the engine lacks
 something you need, write the request into `docs/handoffs/opus-development-handoff.md` under
 "Requests from frontend" and work around it.
