@@ -194,3 +194,11 @@ documentation and dependency updates are yours.
     not met. The study's best answer is to close one maintenance crew (with floating and the
     two floaters absorbing its work) plus a mulch price rise, which holds in the long-run
     and stress checks. Per IC §10 this is reported rather than tuned away.
+21. **Scaling rank hash (ADR-009).** `r(x)` mixes FNV-1a through the murmur3 finalizer; plain
+    FNV-1a clustered the demo's `c001…c100` ranks (0.6× and 0.8× kept the same 31 customers).
+    On the calibrated demo the capacity curve is now monotone in customers (57/75/100/120 at
+    0.6/0.8/1.0/1.2×), effective scale 1.15, profit-maximising grid scale 1.4×. Theoretical
+    capacity counts crewed members' standard hours only, so scheduled person-hours (floaters
+    included) can exceed it; the UI labels them separately. `tests/fixtures/study-result.json`
+    stays the earlier recording (uncalibrated demo, old hash) — it is a UI test input, not a
+    statement about the demo.

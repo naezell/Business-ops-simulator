@@ -49,7 +49,7 @@ function mix(h: number, k: number): number {
 }
 
 /** murmur3 finalizer; returns an unsigned 32-bit integer. */
-function fmix(h: number): number {
+export function fmix(h: number): number {
   h ^= h >>> 16;
   h = Math.imul(h, 0x85ebca6b);
   h ^= h >>> 13;

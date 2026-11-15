@@ -3,13 +3,16 @@
  * Pure helpers used by the capacity experiment; they never run the simulation.
  */
 import type { Customer, ScaleCustomerBase, Scenario, TheoreticalWeeklyCapacity } from './types';
-import { STREAM, hashString, rand01 } from './rng';
+import { STREAM, fmix, hashString, rand01 } from './rng';
 import { crewRate } from './workforce';
 import { learningFactor } from './dynamics';
 
-/** r(x) = hash(x) / 2³² ∈ [0, 1). */
+/**
+ * r(x) = fmix32(hashString(x)) / 2³² ∈ [0, 1). The murmur3 finalizer spreads FNV-1a's high bits,
+ * which barely change for short ids differing only in their last characters (ADR-009).
+ */
 export function hashRank(x: string): number {
-  return hashString(x) / 4294967296;
+  return fmix(hashString(x)) / 4294967296;
 }
 
 /** Offset ≤ 0.15 miles and phase shift of a clone, from seed-independent CLONE draws. */

@@ -3,7 +3,7 @@
  * (simulation-design §8; implementation-contracts §3 row "Scaling helpers").
  */
 import { describe, expect, it } from 'vitest';
-import { runSimulation, scaleCustomerBase, theoreticalWeeklyCapacity, type Scenario } from '../../src/simulation';
+import { hashRank, runSimulation, scaleCustomerBase, theoreticalWeeklyCapacity, type Scenario } from '../../src/simulation';
 import { createDemoTwinScenario } from '../../src/business/landscaping/demoTwin';
 import { deterministicCompany, employee, scenario, vehicle } from './helpers';
 import { stochasticMid } from './scenarios';
@@ -113,5 +113,34 @@ describe('theoreticalWeeklyCapacity (hand-computed)', () => {
   it('crews without a vehicle count zero', () => {
     const co = deterministicCompany({ crews: [{ id: 'c1', name: 'c', vehicleId: null }] });
     expect(theoreticalWeeklyCapacity(scenario(co))).toBe(0);
+  });
+});
+
+describe('scaling rank spreads short sequential ids (ADR-009)', () => {
+  // Independent murmur3 fmix32 and FNV-1a, written out here.
+  const fnv = (s: string) => {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193);
+    return h >>> 0;
+  };
+  const fmix32 = (h: number) => {
+    h ^= h >>> 16;
+    h = Math.imul(h, 0x85ebca6b);
+    h ^= h >>> 13;
+    h = Math.imul(h, 0xc2b2ae35);
+    h ^= h >>> 16;
+    return h >>> 0;
+  };
+  const ids = Array.from({ length: 100 }, (_, i) => `c${String(i + 1).padStart(3, '0')}`);
+
+  it('hashRank equals fmix32(FNV-1a) / 2^32', () => {
+    for (const id of ['c001', 'c050', 'x#1']) expect(hashRank(id)).toBe(fmix32(fnv(id)) / 4294967296);
+  });
+
+  it('kept share tracks m within ±0.12 for c001…c100', () => {
+    for (const m of [0.2, 0.4, 0.6, 0.8]) {
+      const kept = ids.filter((id) => hashRank(id) < m).length / ids.length;
+      expect(Math.abs(kept - m)).toBeLessThanOrEqual(0.12);
+    }
   });
 });
