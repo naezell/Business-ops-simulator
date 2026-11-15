@@ -13,6 +13,7 @@ import {
 import type { AssetS, DayCtx, SimState } from './state';
 import type { BreakdownParams } from './types';
 import { scaleProbability } from './conditions';
+import { bookUpkeep } from './rules';
 
 /** min(1, dailyProb × (1 + ageFactor × ageYears)), never negative. */
 export function breakdownProbability(dailyProb: number, ageFactorPerYear: number, ageYears: number): number {
@@ -47,6 +48,7 @@ function maybeBreak(
   const cost = rm === 1 ? base : base * rm;
   a.downUntil = day + downDays;
   ctx.inc.maintenance += cost;
+  bookUpkeep(st, a, day, cost);
   return { downDays, cost };
 }
 

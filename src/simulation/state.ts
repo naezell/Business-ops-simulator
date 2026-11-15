@@ -18,6 +18,7 @@ import { hashString } from './rng';
 import { initialChurnTable, initialOneOffTable, oneOffPrefix, type DrawTable } from './schedule';
 import { dailyDepreciation, dailyFromMonthly, loanPayment, openingBookValue } from './finance/formulas';
 import { NO_SHOCK, initConditions, type CondState, type ShockMultipliers } from './conditions';
+import { initRules, type RulesState } from './rules';
 
 export interface EmpS {
   id: Id;
@@ -62,6 +63,10 @@ export interface AssetS {
   loan: LoanS | null;
   /** Unavailable today because of an `outage` shock (set by the conditions step). */
   out: boolean;
+  /** Days unavailable (kept only when a rule observes asset downtime). */
+  downDays?: number[];
+  /** [day, amount] of routine maintenance and repairs booked to this asset (kept only when a rule needs it). */
+  upkeep?: [number, number][];
 }
 
 export interface VehicleS {
@@ -220,6 +225,8 @@ export interface SimState {
   churnTable: DrawTable;
   /** Shock state; null when the scenario has no shocks. */
   cond: CondState | null;
+  /** Decision rules; null when the scenario has none. */
+  rules: RulesState | null;
 }
 
 export function newCrewStats(id: Id, name: string): CrewStats {
@@ -394,6 +401,7 @@ export function initState(scenario: Scenario, drawCache?: DrawCache | null): Sim
     ),
     churnTable: initialChurnTable(scenario.seed, customerIds, scenario.horizonDays, drawCache),
     cond: initConditions(scenario.shocks),
+    rules: initRules(scenario.rules, { activeCustomers: customers.length, activeEmployees: employees.length }),
   };
   return st;
 }

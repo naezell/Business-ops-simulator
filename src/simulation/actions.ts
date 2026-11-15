@@ -1,6 +1,6 @@
 /** Actions (simulation-engine §10). Applied at the start of their day, in array order. */
 import type { Action, EquipmentSpec, Id, NewHireSpec, PlannedAction, Policies, VehicleSpec, AcquisitionMethod } from './types';
-import { STREAM, rand01 } from './rng';
+import { STREAM, hashString, rand01 } from './rng';
 import { acquireAsset, disposeAsset } from './assets';
 import { churnCustomer, compactOpen, priceMultiplier, priceShockProbability, withdrawCustomer } from './demand';
 import { hireEmployee } from './workforce';
@@ -60,7 +60,18 @@ function leave(st: SimState, employeeId: Id): void {
 }
 
 /** Validate and apply one action. Returns a rejection reason, or null if applied. */
-export function applyAction(st: SimState, ctx: DayCtx, action: Action, actionIndex: number): string | null {
+/**
+ * `actionIndex` is the planned action's index, or for a rule firing the stable tag
+ * `rule:{ruleId}:{firingNumber}` (simulation-design §9); it is used in the ids of created entities.
+ * `drawIndex` is the index of any random draw the action makes (a rule firing uses hash(tag)).
+ */
+export function applyAction(
+  st: SimState,
+  ctx: DayCtx,
+  action: Action,
+  actionIndex: number | string,
+  drawIndex: number = typeof actionIndex === 'number' ? actionIndex : hashString(actionIndex),
+): string | null {
   const day = ctx.day;
   switch (action.type) {
     case 'hire-employee': {
@@ -153,7 +164,7 @@ export function applyAction(st: SimState, ctx: DayCtx, action: Action, actionInd
         for (const c of st.customers) {
           if (!c.active) continue;
           if (planIdx !== -2 && c.planIdx !== planIdx) continue;
-          if (rand01(st.seed, STREAM.PRICE_SHOCK, c.key, day, actionIndex) < p) churnCustomer(st, ctx, c);
+          if (rand01(st.seed, STREAM.PRICE_SHOCK, c.key, day, drawIndex) < p) churnCustomer(st, ctx, c);
         }
         compactOpen(st);
       }

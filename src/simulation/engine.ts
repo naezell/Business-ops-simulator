@@ -47,6 +47,7 @@ import { workforceStep } from './workforce';
 import { allAssets, initState, type DayCtx, type SimState } from './state';
 import { validateScenario } from './validate';
 import { coveredBy, forcedWeather, multipliersForDay, shockEventsForDay } from './conditions';
+import { recordAvailability, rulesStep } from './rules';
 
 /** Weather from one draw: u < rainout ⇒ rainout; u < rainout + partial ⇒ partial; else clear. */
 export function weatherFromDraw(u: number, rainoutProb: number, partialProb: number): WeatherState {
@@ -234,6 +235,8 @@ export const runSimulation: RunSimulation = (scenario: Scenario, options?: Simul
     // 1. Actions.
     const todays = actionsByDay.get(day);
     if (todays) applyActionsForDay(st, ctx, todays);
+    // 2. Rules (simulation-design §9), against observables as of the end of the previous day.
+    if (st.rules) rulesStep(st, ctx, days);
     const co = st.company;
     // 2. Weather.
     const w =
@@ -248,6 +251,7 @@ export const runSimulation: RunSimulation = (scenario: Scenario, options?: Simul
     workforceStep(st, ctx);
     // 4. Assets.
     if (workday) assetStep(st, ctx);
+    recordAvailability(st, day);
     // 5. Demand.
     demandStep(st, ctx);
     // 6–7. Dispatch and unserved attribution.

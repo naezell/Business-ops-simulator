@@ -6,6 +6,7 @@ import { isDown } from './assets';
 import { crewRate } from './workforce';
 import type { CrewS, DayCtx, EmpS, EquipS, OrderS, SimState, VehicleS } from './state';
 import { scaleProbability, shockedCollectionDelay } from './conditions';
+import { bookUpkeep } from './rules';
 
 /** Tolerance on clock-limit comparisons (float noise only). */
 export const CLOCK_EPS = 1e-9;
@@ -451,7 +452,9 @@ export function dispatchDay(st: SimState, ctx: DayCtx, weather: WeatherState, fu
       const v = r.vehicle as VehicleS;
       inc.fuel += ((v.mpg > 0 ? r.miles / v.mpg : 0) + r.equipGallons) * fuelPrice;
       const upkeep = r.miles * v.maintPerMile;
-      inc.maintenance += maintM === 1 ? upkeep : upkeep * maintM;
+      const vu = maintM === 1 ? upkeep : upkeep * maintM;
+      inc.maintenance += vu;
+      bookUpkeep(st, v.a, day, vu);
     } else {
       for (const e of r.present) pay(e, idlePay, 0, 0, r.crew);
       if (r.status !== 'fielded') {
@@ -464,7 +467,9 @@ export function dispatchDay(st: SimState, ctx: DayCtx, weather: WeatherState, fu
   for (const it of st.equipment) {
     if (it.hoursToday > 0) {
       const upkeep = it.hoursToday * it.maintPerHour;
-      inc.maintenance += maintM === 1 ? upkeep : upkeep * maintM;
+      const eu = maintM === 1 ? upkeep : upkeep * maintM;
+      inc.maintenance += eu;
+      bookUpkeep(st, it.a, day, eu);
       it.hoursToday = 0;
     }
   }
