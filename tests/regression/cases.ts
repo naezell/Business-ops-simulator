@@ -34,6 +34,8 @@ export const LATER_FIELDS: ReadonlySet<string> = new Set<string>([
   'completedLaborHours',
   'quits',
   'years',
+  // E8: per-customer statistics in full-detail results.
+  'customerStats',
 ]);
 
 export const SEEDS = [1, 2, 3] as const;

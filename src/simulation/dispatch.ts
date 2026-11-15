@@ -5,7 +5,7 @@ import { collectionDelay, isBadDebt } from './finance/formulas';
 import { assetAgeOnDay, isDown } from './assets';
 import { absenceProbability, agedMaintenanceRate } from './dynamics';
 import { crewRate } from './workforce';
-import type { CrewS, DayCtx, EmpS, EquipS, OrderS, SimState, VehicleS } from './state';
+import { customerStatsOf, type CrewS, type DayCtx, type EmpS, type EquipS, type OrderS, type SimState, type VehicleS } from './state';
 import { scaleProbability, shockedCollectionDelay } from './conditions';
 import { bookUpkeep } from './rules';
 
@@ -385,6 +385,7 @@ export function dispatchDay(st: SimState, ctx: DayCtx, weather: WeatherState, fu
       const mat = M['materials-cost'] === 1 ? o.materials : o.materials * M['materials-cost'];
       inc.materials += mat;
       o.jt.stats.materials += mat;
+      if (st.full) customerStatsOf(o.cust).materials += mat;
     }
     const gal = f.hours * d.equipmentFuelGalPerHour;
     r.equipGallons += gal;
@@ -397,6 +398,13 @@ export function dispatchDay(st: SimState, ctx: DayCtx, weather: WeatherState, fu
     js.laborCost += wageSum * (f.hours + f.tIn) * (1 + burden);
     const vMpg = (r.vehicle as VehicleS).mpg;
     js.fuel += (gal + (vMpg > 0 ? milesIn / vMpg : 0)) * fuelPrice;
+    if (st.full) {
+      const cs = customerStatsOf(o.cust);
+      cs.onSiteHours += r.n * f.hours;
+      cs.travelHours += r.n * f.tIn;
+      cs.laborCost += wageSum * (f.hours + f.tIn) * (1 + burden);
+      cs.fuel += (gal + (vMpg > 0 ? milesIn / vMpg : 0)) * fuelPrice;
+    }
     let completed = false;
     if (f.kind === 'full') {
       ops.completedLaborHours += o.remaining;
@@ -578,6 +586,11 @@ function completeOrder(st: SimState, ctx: DayCtx, o: OrderS): void {
   ctx.ops.jobsCompleted += 1;
   o.jt.stats.jobsCompleted += 1;
   o.jt.stats.revenue += o.price;
+  if (st.full) {
+    const cs = customerStatsOf(o.cust);
+    cs.jobsCompleted += 1;
+    cs.revenue += o.price;
+  }
   if (day > o.createdDay + d.lateAfterDays) {
     ctx.ops.jobsLate += 1;
     o.cust.failure += 0.5;

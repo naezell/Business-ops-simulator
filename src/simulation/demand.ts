@@ -2,7 +2,7 @@
 import type { Id, JobTypeDef, Pricing } from './types';
 import { STREAM, hashString, poissonInverse, rand01, rand01FromPrefix, randPrefix } from './rng';
 import type { CustomerS, DayCtx, JobTypeS, OrderS, SimState } from './state';
-import { oneOffKeysFor } from './state';
+import { customerStatsOf, oneOffKeysFor } from './state';
 import { SCHEDULE_MAX_P } from './schedule';
 import { scaleProbability } from './conditions';
 import { newCustomerChurnFactor, referralLeadRate, saturationFactor, serviceIndex } from './dynamics';
@@ -404,12 +404,13 @@ export function demandStep(st: SimState, ctx: DayCtx): void {
   // Cancellation of stale orders (§5.5).
   for (const o of st.open) {
     if (o.status !== 'open') continue;
-    if (day - o.createdDay >= o.jt.def.cancelAfterDays) cancelOrder(ctx, o);
+    if (day - o.createdDay >= o.jt.def.cancelAfterDays) cancelOrder(ctx, o, st.full);
   }
   compactOpen(st);
 }
 
-export function cancelOrder(ctx: DayCtx, o: OrderS): void {
+export function cancelOrder(ctx: DayCtx, o: OrderS, full = false): void {
+  if (full) customerStatsOf(o.cust).jobsCancelled += 1;
   o.status = 'cancelled';
   ctx.ops.jobsCancelled += 1;
   ctx.ops.lostRevenue += o.price;

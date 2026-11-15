@@ -18,6 +18,8 @@ export const STREAM = {
   PRICE_SHOCK: 12,
   COLLECTION: 13,
   BAD_DEBT: 14,
+  /** Digital twin: positions and phases of cloned customers (scaleCustomerBase, simulation-design §8). Seed-independent. */
+  CLONE: 15,
 } as const;
 
 export type StreamId = (typeof STREAM)[keyof typeof STREAM];

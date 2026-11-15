@@ -4,6 +4,7 @@ import type {
   CrewDayLog,
   CrewStats,
   CustomerSnapshot,
+  CustomerStats,
   DailyRecord,
   Id,
   JobTypeStats,
@@ -44,7 +45,7 @@ import { assetStep, depreciateAll, leaseCostPerDay, payLoans } from './assets';
 import { demandStep } from './demand';
 import { dispatchDay } from './dispatch';
 import { workforceStep } from './workforce';
-import { allAssets, initState, type DayCtx, type SimState } from './state';
+import { allAssets, customerStatsOf, initState, type DayCtx, type SimState } from './state';
 import { validateScenario } from './validate';
 import { coveredBy, forcedWeather, multipliersForDay, shockEventsForDay } from './conditions';
 import { recordAvailability, rulesStep } from './rules';
@@ -198,6 +199,7 @@ export const runSimulation: RunSimulation = (scenario: Scenario, options?: Simul
   const warnings = issues.filter((i) => i.severity === 'warning').map((i) => `${i.path}: ${i.message}`);
   const full = (options?.detail ?? 'full') === 'full';
   const st = initState(scenario, options?.drawCache);
+  st.full = full;
   const H = scenario.horizonDays;
   const cal = buildCalendar(st.company.startMonth, H);
 
@@ -354,6 +356,13 @@ export const runSimulation: RunSimulation = (scenario: Scenario, options?: Simul
       churnedDay: c.churnedDay,
     }));
     result.customers = customers;
+    const customerStats: Record<Id, CustomerStats> = {};
+    for (const c of st.customers) {
+      const s = { ...customerStatsOf(c) };
+      s.contribution = s.revenue - s.laborCost - s.materials - s.fuel;
+      customerStats[c.id] = s;
+    }
+    result.customerStats = customerStats;
   }
   return result;
 };

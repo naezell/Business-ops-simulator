@@ -3,6 +3,7 @@ import type {
   CashFlowStatement,
   CompanyConfig,
   CrewStats,
+  CustomerStats,
   EquipmentSpec,
   Id,
   IncomeStatement,
@@ -125,6 +126,8 @@ export interface CustomerS {
   oneOffKeys: Int32Array;
   /** randPrefix(seed, CHURN, key) (lazily filled; NaN = not yet computed). */
   churnPrefix: number;
+  /** Per-customer statistics (detail 'full' only, created on first use). */
+  stats?: CustomerStats;
 }
 
 export interface JobTypeS {
@@ -236,6 +239,23 @@ export interface SimState {
   rules: RulesState | null;
   /** Per-employee workforce dynamics enabled (simulation-design §3). */
   wfDyn: boolean;
+  /** detail 'full': keep per-customer statistics. */
+  full: boolean;
+}
+
+export function customerStatsOf(c: CustomerS): CustomerStats {
+  return (c.stats ??= {
+    customerId: c.id,
+    jobsCompleted: 0,
+    jobsCancelled: 0,
+    revenue: 0,
+    laborCost: 0,
+    materials: 0,
+    fuel: 0,
+    contribution: 0,
+    onSiteHours: 0,
+    travelHours: 0,
+  });
 }
 
 export function newCrewStats(id: Id, name: string): CrewStats {
@@ -414,6 +434,7 @@ export function initState(scenario: Scenario, drawCache?: DrawCache | null): Sim
     cond: initConditions(scenario.shocks),
     rules: initRules(scenario.rules, { activeCustomers: customers.length, activeEmployees: employees.length }),
     wfDyn: workforceDynamicsOn(company.workforce),
+    full: false,
   };
   return st;
 }
