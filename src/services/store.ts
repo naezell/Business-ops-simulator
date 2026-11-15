@@ -10,8 +10,9 @@ import type { Action, CompanyConfig, PlannedAction, Scenario, Shock, SimulationR
 import { defaultIndustryId, getIndustry } from '@/business/registry';
 import type { IndustryDefinition } from '@/business/types';
 import { applyPatch, chipKey, type CompanyPatch } from './derive';
-import type { Objective, OptimizationProgress, OptimizationResult } from '@/optimization';
-import { catalogFromIndustry, runOptimization, type OptimizationHandle } from './simClient';
+import type { Objective, OptimizationProgress, OptimizationResult, StrategyEvaluation, StudyProgress, StudyResult } from '@/optimization';
+import { catalogFromIndustry, runOptimization, runStudyInPool, type OptimizationHandle, type StudyHandle } from './simClient';
+import { adoptPayload, mergeRules } from './studyAdopt';
 import { STORAGE_VERSION, clearPersisted, loadPersisted, savePersisted, type DraftPlan, type PersistedState, type ViewId } from './persistence';
 import { clampDay } from './planTimeline';
 import type { DecisionRule } from '@/simulation/types-twin';
@@ -74,7 +75,14 @@ function buildScenarios(industry: IndustryDefinition, core: Core): { baseline: S
     seed: core.seed,
     ...(core.shocks.length > 0 ? { shocks: core.shocks } : {}),
   };
-  const draft: Scenario = { ...baseline, id: 'draft', name: 'Draft', actions: [...core.baselineActions, ...core.draft.actions] };
+  const draft: Scenario = {
+    ...baseline,
+    id: 'draft',
+    name: 'Draft',
+    actions: [...core.baselineActions, ...core.draft.actions],
+    // Rules belong to the draft only; omitted when empty so results without rules are unchanged.
+    ...(core.draft.rules.length > 0 ? { rules: core.draft.rules } : {}),
+  };
   return { baseline, draft, company };
 }
 
@@ -88,6 +96,21 @@ export interface OptState {
   /** Fingerprint of the scenario the result was computed for; compare with scenarioKey(state). */
   resultKey: string | null;
   /** Candidate ids the user applied from the current result. */
+  appliedIds: string[];
+  error: string | null;
+}
+
+/** Study state (optimizer v2). Lives in memory only. `result` is partial while running or after a cancel. */
+export interface StudyState {
+  status: 'idle' | 'running' | 'error';
+  objective: Objective;
+  /** Phase now running with its simulation counts (no partial payload). */
+  progress: Omit<StudyProgress, 'partial'> | null;
+  result: StudyResult | null;
+  /** True while `result` is an intermediate or cancelled result rather than a finished study. */
+  partial: boolean;
+  resultKey: string | null;
+  /** Strategy ids adopted into the draft from the current result. */
   appliedIds: string[];
   error: string | null;
 }
@@ -114,6 +137,7 @@ export interface AppState extends Core {
   selectedDay: number;
   view: ViewId;
   opt: OptState;
+  study: StudyState;
 
   setView: (v: ViewId) => void;
   setSelectedDay: (d: number) => void;
@@ -136,6 +160,10 @@ export interface AppState extends Core {
   applyPlannedActions: (actions: PlannedAction[], candidateId?: string) => void;
   startOptimization: (objective: Objective) => void;
   cancelOptimization: () => void;
+  startStudy: (objective: Objective) => void;
+  cancelStudy: () => void;
+  /** Applies a strategy's dated actions and rules to the draft (rules de-duplicated by id). */
+  adoptStrategy: (strategy: StrategyEvaluation) => void;
   removeDraftAt: (index: number) => void;
   resetDraft: () => void;
   adoptDraft: () => void;
@@ -167,7 +195,7 @@ function buildAll(core: Core): Built {
   const b = simulate(baseline);
   if (!b.result) throw new Error('Baseline could not be simulated: ' + b.issues.map((i) => i.message).join('; '));
   let d: Outcome;
-  if (core.draft.actions.length === 0) d = { result: b.result, issues: b.issues };
+  if (core.draft.actions.length === 0 && core.draft.rules.length === 0) d = { result: b.result, issues: b.issues };
   else d = simulate(draft);
   return {
     industry,
@@ -208,6 +236,7 @@ let timer: ReturnType<typeof setTimeout> | null = null;
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 let lastBaselineKey = '';
 let optHandle: OptimizationHandle | null = null;
+let studyHandle: StudyHandle | null = null;
 
 const baselineKeyOf = (c: Core) => JSON.stringify([c.industryId, c.seed, c.horizonMonths, c.patch, c.shocks, c.baselineActions]);
 
@@ -278,7 +307,7 @@ export const useStore = create<AppState>()((set, get) => {
     }
     let draftResult = s.draftResult;
     let draftIssues: ValidationIssue[];
-    if (core.draft.actions.length === 0) {
+    if (core.draft.actions.length === 0 && core.draft.rules.length === 0) {
       draftResult = baselineResult;
       draftIssues = baselineIssues;
     } else {
@@ -289,7 +318,7 @@ export const useStore = create<AppState>()((set, get) => {
     const baselineBroken = baselineIssues.some((i) => i.severity === 'error');
     const draftBroken = draftIssues.some((i) => i.severity === 'error');
     // Never show a draft result computed from an older baseline than the one on screen.
-    if (draftBroken && !baselineBroken && core.draft.actions.length > 0 && (draftResult.seed !== core.seed || draftResult.horizonDays !== baselineResult.horizonDays)) {
+    if (draftBroken && !baselineBroken && (core.draft.actions.length > 0 || core.draft.rules.length > 0) && (draftResult.seed !== core.seed || draftResult.horizonDays !== baselineResult.horizonDays)) {
       draftResult = baselineResult;
     }
     set({ baselineResult, draftResult, baselineIssues, draftIssues, pending: false });
@@ -310,6 +339,7 @@ export const useStore = create<AppState>()((set, get) => {
     selectedDay: Math.min(init.selectedDay, init.baselineResult.horizonDays - 1),
     view: init.view,
     opt: { status: 'idle', objective: 'net-profit', progress: null, result: null, resultKey: null, appliedIds: [], error: null },
+    study: { status: 'idle', objective: 'net-profit', progress: null, result: null, partial: false, resultKey: null, appliedIds: [], error: null },
 
     setView: (view) => set({ view }),
     setSelectedDay: (d) => set((s) => ({ selectedDay: Math.max(0, Math.min(s.horizonDays - 1, Math.round(d))) })),
@@ -404,6 +434,76 @@ export const useStore = create<AppState>()((set, get) => {
       const h = optHandle;
       if (!h) return;
       h.cancel();
+    },
+    startStudy: (objective) => {
+      const s = get();
+      if (s.study.status === 'running') return;
+      const core: Core = {
+        industryId: s.industryId,
+        seed: s.seed,
+        horizonMonths: s.horizonMonths,
+        baselineActions: s.baselineActions,
+        draft: s.draft,
+        patch: s.patch,
+        shocks: s.shocks,
+      };
+      const key = scenarioKey(core);
+      // Same scenario the optimizer used: baseline plus pending decisions (and rules), with the store's shocks.
+      const { draft } = buildScenarios(s.industry, core);
+      let handle: StudyHandle;
+      let lastPush = 0;
+      const onProgress = (p: StudyProgress) => {
+        if (studyHandle !== handle) return;
+        const now = Date.now();
+        const cur = get().study;
+        // Partial results always arrive; plain counters are throttled.
+        if (!p.partial && cur.progress && cur.progress.phase === p.phase && now - lastPush < 100) return;
+        lastPush = now;
+        const { partial, ...progress } = p;
+        set({ study: { ...cur, progress, ...(partial ? { result: partial, partial: true, resultKey: key } : {}) } });
+      };
+      try {
+        handle = runStudyInPool({ scenario: draft, catalog: catalogFromIndustry(s.industry), objective }, onProgress);
+      } catch (e) {
+        set({ study: { ...s.study, status: 'error', error: e instanceof Error ? e.message : String(e) } });
+        return;
+      }
+      studyHandle = handle;
+      set({ study: { status: 'running', objective, progress: { phase: 'baseline', completed: 0, total: 1 }, result: null, partial: false, resultKey: null, appliedIds: [], error: null } });
+      handle.promise.then(
+        (result) => {
+          if (studyHandle !== handle) return;
+          studyHandle = null;
+          set({ study: { status: 'idle', objective, progress: null, result, partial: false, resultKey: key, appliedIds: [], error: null } });
+        },
+        (err: Error) => {
+          if (studyHandle !== handle) return;
+          studyHandle = null;
+          const cancelled = err.name === 'AbortError';
+          set({ study: { ...get().study, status: cancelled ? 'idle' : 'error', progress: null, error: cancelled ? null : err.message } });
+        },
+      );
+    },
+    cancelStudy: () => {
+      const h = studyHandle;
+      if (!h) return;
+      studyHandle = null;
+      h.cancel();
+      // Keep whatever phases finished; the result stays marked partial.
+      set({ study: { ...get().study, status: 'idle', progress: null, error: null } });
+    },
+    adoptStrategy: (strategy) => {
+      const s0 = get();
+      const { actions, rules } = adoptPayload(strategy);
+      const list = s0.draft.actions.slice();
+      for (const pa of actions) {
+        const key = chipKey(pa.action);
+        const at = key === null ? -1 : list.findIndex((p) => chipKey(p.action) === key);
+        const day = clampDay(pa.day, s0.horizonDays);
+        if (at >= 0) list[at] = { day, action: pa.action };
+        else list.push({ day, action: pa.action });
+      }
+      commit({ draft: { actions: list, rules: mergeRules(s0.draft.rules, rules) } }, { study: { ...s0.study, appliedIds: [...s0.study.appliedIds, strategy.id] } });
     },
     removeDraftByKey: (key) => {
       const d = get().draft;
