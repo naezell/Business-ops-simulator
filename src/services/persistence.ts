@@ -10,7 +10,7 @@ import type { DecisionRule } from '@/simulation/types-twin';
 import type { CompanyPatch } from './derive';
 
 export const STORAGE_KEY = 'business-ops-simulator:state';
-export const STORAGE_VERSION = 3;
+export const STORAGE_VERSION = 4;
 
 export type ViewId = 'operations' | 'financials' | 'business' | 'optimize';
 export const VIEW_IDS: ViewId[] = ['operations', 'financials', 'business', 'optimize'];
@@ -33,6 +33,8 @@ export interface PersistedState {
   patch: CompanyPatch;
   /** Hypothetical conditions (shocks) applied to baseline and draft alike. Engine days are 0-based. */
   shocks: Shock[];
+  /** Id of the industry's demo scenario in use, or null for the sample company. */
+  demoScenarioId: string | null;
   selectedDay: number;
   view: ViewId;
 }
@@ -72,11 +74,12 @@ export function isShock(x: unknown): x is Shock {
  * Validates parsed storage data and upgrades older schema versions.
  *  - v1: `draftActions: PlannedAction[]`           -> v2: `draft: { actions, rules: [] }`
  *  - v2: no shocks                                  -> v3: `shocks: []`
+ *  - v3: no demo scenario                           -> v4: `demoScenarioId: null`
  * Returns null for anything unusable (corrupt, unknown version).
  */
 export function migratePersisted(data: unknown): PersistedState | null {
   if (!isObj(data)) return null;
-  if (data.version !== 1 && data.version !== 2 && data.version !== STORAGE_VERSION) return null;
+  if (data.version !== 1 && data.version !== 2 && data.version !== 3 && data.version !== STORAGE_VERSION) return null;
   if (typeof data.industryId !== 'string') return null;
   if (!isFiniteNum(data.seed) || !isFiniteNum(data.horizonMonths)) return null;
   if (!Array.isArray(data.baselineActions) || !data.baselineActions.every(isPlannedAction)) return null;
@@ -99,7 +102,7 @@ export function migratePersisted(data: unknown): PersistedState | null {
     patch[k] = v;
   }
   let shocks: Shock[] = [];
-  if (data.version === 3) {
+  if (data.version === 3 || data.version === STORAGE_VERSION) {
     if (!Array.isArray(data.shocks) || !data.shocks.every(isShock)) return null;
     shocks = data.shocks;
   }
@@ -113,6 +116,7 @@ export function migratePersisted(data: unknown): PersistedState | null {
     draft,
     patch,
     shocks,
+    demoScenarioId: typeof data.demoScenarioId === 'string' && data.demoScenarioId !== '' ? data.demoScenarioId : null,
     selectedDay: isFiniteNum(data.selectedDay) ? Math.max(0, Math.floor(data.selectedDay)) : 0,
     view,
   };

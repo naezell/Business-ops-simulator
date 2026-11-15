@@ -1,8 +1,9 @@
 import { useCallback, useMemo, useState } from "react";
-import { useStore } from "@/services/store";
+import { selectHasDraft, useStore } from "@/services/store";
 import { timelineEvents } from "@/services/derive";
 import { dayLabel, money, num, signed, signedMoney } from "@/services/format";
 import { Card, Segmented, StatTile } from "@/components/ui";
+import { SyntheticLabel } from "@/components/SyntheticLabel";
 import { useProjections } from "@/components/hooks";
 import { DayScrubber } from "@/components/DayScrubber";
 import { CREW_COLORS, ServiceMap } from "@/components/ServiceMap";
@@ -19,7 +20,7 @@ const Stat = StatTile;
 export function OperationsPage() {
   const baselineResult = useStore((s) => s.baselineResult);
   const draftResult = useStore((s) => s.draftResult);
-  const hasDraft = useStore((s) => s.draftActions.length > 0);
+  const hasDraft = useStore(selectHasDraft);
   const day = useStore((s) => s.selectedDay);
   const setDay = useStore((s) => s.setSelectedDay);
   const company = useStore((s) => s.company);
@@ -68,6 +69,7 @@ export function OperationsPage() {
   const compare = showDraft;
   return (
     <div className="space-y-4">
+      <SyntheticLabel />
       {hasDraft && (
         <div className="flex flex-wrap items-center gap-3">
           <span className="text-[13px] text-muted">Showing</span>

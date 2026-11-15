@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Bar, CartesianGrid, ComposedChart, Line, LineChart, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { buildCalendar } from '@/simulation';
-import { useStore } from '@/services/store';
+import { selectHasDraft, useStore } from '@/services/store';
 import {
   COST_GROUPS,
   INCOME_ROWS,
@@ -16,6 +16,7 @@ import {
 } from '@/services/derive';
 import { MONTHS, dayLabel, money, moneyCompact, num, percent, signedMoney, signedPoints, signedRelative } from '@/services/format';
 import { Card, DeltaText, Notice, Segmented, StatTile, cx } from '@/components/ui';
+import { SyntheticLabel } from '@/components/SyntheticLabel';
 import { LongRunCharts, YearlyTable } from '@/components/financials/LongRun';
 
 // ───────────────────────── KPI row ─────────────────────────
@@ -536,11 +537,12 @@ function JobTypeTable({ showDraft }: { showDraft: boolean }) {
 // ───────────────────────── Page ─────────────────────────
 
 export function FinancialsPage() {
-  const hasDraft = useStore((s) => s.draftActions.length > 0);
+  const hasDraft = useStore(selectHasDraft);
   const [which, setWhich] = useState<'baseline' | 'draft'>('draft');
   const showDraft = hasDraft && which === 'draft';
   return (
     <div className="space-y-4">
+      <SyntheticLabel />
       {hasDraft && (
         <div className="flex flex-wrap items-center gap-3">
           <span className="text-[13px] text-muted">Showing</span>

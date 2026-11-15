@@ -29,10 +29,10 @@ describe('persistence v3', () => {
     selectedDay: 4,
     view: 'business',
   };
-  it('migrates v2 to v3 with no shocks and loses nothing', () => {
+  it('migrates v2 to the current version with no shocks and loses nothing', () => {
     const m = migratePersisted(structuredClone(v2))!;
-    expect(STORAGE_VERSION).toBe(3);
-    expect(m.version).toBe(3);
+    expect(STORAGE_VERSION).toBe(4);
+    expect(m.version).toBe(4);
     expect(m.shocks).toEqual([]);
     expect(m.draft).toEqual(v2.draft);
     expect(m.patch).toEqual(v2.patch);
@@ -42,7 +42,7 @@ describe('persistence v3', () => {
     const v1 = { ...v2, version: 1, draftActions: v2.draft.actions } as Record<string, unknown>;
     delete v1.draft;
     const m = migratePersisted(v1)!;
-    expect(m.version).toBe(3);
+    expect(m.version).toBe(4);
     expect(m.shocks).toEqual([]);
     expect(m.draft.actions).toEqual(v2.draft.actions);
   });

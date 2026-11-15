@@ -170,9 +170,18 @@ export function dayFeed(
         out.push({ kind: 'rejected', text: `Decision rejected: ${ACTION_LABEL[t] ?? t}${str(e.reason) ? ` (${str(e.reason)})` : ''}` });
         break;
       }
-      case 'rule-fired':
-        out.push({ kind: 'rule', text: `Rule fired${label ? `: ${label}` : ''}`, money: numOf(e.cashEffect) ?? numOf(e.amount) });
+      case 'rule-fired': {
+        // `nameOf` resolves rule and entity ids it knows; unknown ids are shown as they are.
+        const rule = str(e.ruleId);
+        const entity = str(e.entityId);
+        const ruleText = rule ? nameOf(rule) : label;
+        out.push({
+          kind: 'rule',
+          text: `Rule fired${ruleText ? `: ${ruleText}` : ''}${entity ? ` (${nameOf(entity)})` : ''}`,
+          money: numOf(e.cashEffect) ?? numOf(e.amount),
+        });
         break;
+      }
       case 'shock-started':
         out.push({ kind: 'shock-start', text: `Condition started${shockLabel ?? label ? `: ${shockLabel ?? label}` : ''}` });
         break;

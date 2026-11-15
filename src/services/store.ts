@@ -39,6 +39,8 @@ interface Core {
   patch: CompanyPatch;
   /** Hypothetical conditions: describe the world, so they apply to baseline and draft alike. */
   shocks: Shock[];
+  /** Id of the industry's demo scenario the company, start month, horizon and seed come from; null = sample company. */
+  demoScenarioId: string | null;
 }
 
 interface Outcome {
@@ -63,25 +65,55 @@ function sampleCompany(industry: IndustryDefinition): CompanyConfig {
   return c;
 }
 
+const demoCache = new Map<string, Scenario>();
+/** The industry's demo scenario with this id (built once; never mutated), or null. */
+export function demoScenarioOf(industry: IndustryDefinition, id: string | null): Scenario | null {
+  if (!id) return null;
+  const key = `${industry.id}/${id}`;
+  let sc = demoCache.get(key);
+  if (!sc) {
+    const def = industry.demoScenarios?.find((d) => d.id === id);
+    if (!def) return null;
+    demoCache.set(key, (sc = def.create()));
+  }
+  return sc;
+}
+
+/** Company before user edits: the demo scenario's company, or the industry's sample company. */
+function baseCompany(industry: IndustryDefinition, core: Pick<Core, 'demoScenarioId'>): CompanyConfig {
+  return demoScenarioOf(industry, core.demoScenarioId)?.company ?? sampleCompany(industry);
+}
+
+/** A demo scenario fixes its own horizon in days; otherwise the horizon is whole months from the start month. */
+function horizonDaysOf(industry: IndustryDefinition, core: Core, company: CompanyConfig): number {
+  return demoScenarioOf(industry, core.demoScenarioId)?.horizonDays ?? horizonDaysFor(company.startMonth, core.horizonMonths);
+}
+
 function buildScenarios(industry: IndustryDefinition, core: Core): { baseline: Scenario; draft: Scenario; company: CompanyConfig } {
-  const company = applyPatch(sampleCompany(industry), core.patch);
-  const horizonDays = horizonDaysFor(company.startMonth, core.horizonMonths);
+  const demo = demoScenarioOf(industry, core.demoScenarioId);
+  const company = applyPatch(baseCompany(industry, core), core.patch);
+  const horizonDays = horizonDaysOf(industry, core, company);
+  // The demo's own shocks, rules and actions are kept; whatever the user adds is appended.
+  const shocks = [...(demo?.shocks ?? []), ...core.shocks];
+  const demoRules = demo?.rules ?? [];
   const baseline: Scenario = {
     id: 'baseline',
     name: 'Baseline',
     company,
-    actions: core.baselineActions,
+    actions: [...(demo?.actions ?? []), ...core.baselineActions],
     horizonDays,
     seed: core.seed,
-    ...(core.shocks.length > 0 ? { shocks: core.shocks } : {}),
+    ...(shocks.length > 0 ? { shocks } : {}),
+    ...(demoRules.length > 0 ? { rules: demoRules } : {}),
   };
+  const rules = [...demoRules, ...core.draft.rules];
   const draft: Scenario = {
     ...baseline,
     id: 'draft',
     name: 'Draft',
-    actions: [...core.baselineActions, ...core.draft.actions],
-    // Rules belong to the draft only; omitted when empty so results without rules are unchanged.
-    ...(core.draft.rules.length > 0 ? { rules: core.draft.rules } : {}),
+    actions: [...baseline.actions, ...core.draft.actions],
+    // User rules belong to the draft only; omitted when empty so results without rules are unchanged.
+    ...(rules.length > 0 ? { rules } : {}),
   };
   return { baseline, draft, company };
 }
@@ -117,7 +149,7 @@ export interface StudyState {
 
 /** Fingerprint of everything that changes what the optimizer would see. */
 export function scenarioKey(s: Core): string {
-  return JSON.stringify([s.industryId, s.seed, s.horizonMonths, s.patch, s.shocks, s.baselineActions, s.draft]);
+  return JSON.stringify([s.industryId, s.demoScenarioId, s.seed, s.horizonMonths, s.patch, s.shocks, s.baselineActions, s.draft]);
 }
 
 export interface AppState extends Core {
@@ -172,6 +204,12 @@ export interface AppState extends Core {
   setPatch: (path: string, value: number) => void;
   clearPatch: (path: string) => void;
   resetEverything: () => void;
+  /**
+   * Switches between the industry's sample company (null) and one of its demo scenarios. Takes the scenario's
+   * company, start month, horizon and seed, and clears the draft, adopted decisions, edits, conditions and the
+   * selected day (they refer to the previous company). Callers confirm first when something would be lost.
+   */
+  setDemoScenario: (id: string | null) => void;
 }
 
 interface Built {
@@ -185,7 +223,7 @@ interface Built {
 }
 
 function freshCore(industryId: string): Core {
-  return { industryId, seed: DEFAULT_SEED, horizonMonths: 12, baselineActions: [], draft: { actions: [], rules: [] }, patch: {}, shocks: [] };
+  return { industryId, seed: DEFAULT_SEED, horizonMonths: 12, baselineActions: [], draft: { actions: [], rules: [] }, patch: {}, shocks: [], demoScenarioId: null };
 }
 
 /** Builds and simulates from a core; throws if the baseline cannot be simulated. */
@@ -220,6 +258,8 @@ function initial(): Built & { selectedDay: number; view: ViewId } {
         draft: stored.draft,
         patch: stored.patch,
         shocks: stored.shocks,
+        // An id the industry no longer offers falls back to the sample company.
+        demoScenarioId: demoScenarioOf(getIndustry(stored.industryId), stored.demoScenarioId) ? stored.demoScenarioId : null,
       };
       const built = buildAll(core);
       // A draft that no longer simulates counts as unusable stored data.
@@ -238,7 +278,7 @@ let lastBaselineKey = '';
 let optHandle: OptimizationHandle | null = null;
 let studyHandle: StudyHandle | null = null;
 
-const baselineKeyOf = (c: Core) => JSON.stringify([c.industryId, c.seed, c.horizonMonths, c.patch, c.shocks, c.baselineActions]);
+const baselineKeyOf = (c: Core) => JSON.stringify([c.industryId, c.demoScenarioId, c.seed, c.horizonMonths, c.patch, c.shocks, c.baselineActions]);
 
 export const useStore = create<AppState>()((set, get) => {
   const init = initial();
@@ -255,11 +295,12 @@ export const useStore = create<AppState>()((set, get) => {
       draft: s.draft,
       patch: s.patch,
       shocks: s.shocks,
+      demoScenarioId: s.demoScenarioId,
       ...next,
     };
     const industry = getIndustry(core.industryId);
-    const company = applyPatch(sampleCompany(industry), core.patch);
-    const horizonDays = horizonDaysFor(company.startMonth, core.horizonMonths);
+    const company = applyPatch(baseCompany(industry, core), core.patch);
+    const horizonDays = horizonDaysOf(industry, core, company);
     // A shorter horizon pulls later decisions back to its last day so they stay valid.
     if (horizonDays !== s.horizonDays) {
       const fit = (list: PlannedAction[]) => (list.some((p) => p.day >= horizonDays) ? list.map((p) => ({ ...p, day: clampDay(p.day, horizonDays) })) : list);
@@ -291,6 +332,7 @@ export const useStore = create<AppState>()((set, get) => {
       draft: s.draft,
       patch: s.patch,
       shocks: s.shocks,
+      demoScenarioId: s.demoScenarioId,
     };
     const industry = getIndustry(core.industryId);
     const { baseline, draft } = buildScenarios(industry, core);
@@ -396,6 +438,7 @@ export const useStore = create<AppState>()((set, get) => {
         draft: s.draft,
         patch: s.patch,
         shocks: s.shocks,
+        demoScenarioId: s.demoScenarioId,
       };
       const key = scenarioKey(core);
       // The optimizer improves the current draft: baseline plus pending decisions is the scenario it starts from.
@@ -446,6 +489,7 @@ export const useStore = create<AppState>()((set, get) => {
         draft: s.draft,
         patch: s.patch,
         shocks: s.shocks,
+        demoScenarioId: s.demoScenarioId,
       };
       const key = scenarioKey(core);
       // Same scenario the optimizer used: baseline plus pending decisions (and rules), with the store's shocks.
@@ -530,6 +574,13 @@ export const useStore = create<AppState>()((set, get) => {
       const c = freshCore(get().industryId);
       commit(c, { selectedDay: 0 });
     },
+    setDemoScenario: (id) => {
+      const s = get();
+      const demo = demoScenarioOf(s.industry, id);
+      const target = demo ? id : null;
+      if (target === s.demoScenarioId) return;
+      commit({ ...freshCore(s.industryId), demoScenarioId: target, seed: demo?.seed ?? DEFAULT_SEED, horizonMonths: s.horizonMonths }, { selectedDay: 0 });
+    },
   };
 });
 
@@ -546,6 +597,7 @@ useStore.subscribe((s) => {
       draft: s.draft,
       patch: s.patch,
       shocks: s.shocks,
+      demoScenarioId: s.demoScenarioId,
       selectedDay: s.selectedDay,
       view: s.view,
     };
@@ -555,5 +607,44 @@ useStore.subscribe((s) => {
 
 /** True when the draft differs from the baseline. */
 export function selectHasDraft(s: AppState): boolean {
-  return s.draftActions.length > 0;
+  return s.draft.actions.length > 0 || s.draft.rules.length > 0;
+}
+
+/** True when switching the demo scenario would discard something the user did. */
+export function selectHasUserWork(s: AppState): boolean {
+  return selectHasDraft(s) || s.baselineActions.length > 0 || s.shocks.length > 0 || Object.keys(s.patch).length > 0;
+}
+
+/**
+ * True while the company is built-in demonstration data (the sample company or a demo scenario), never
+ * user-provided data. Every company today comes from an industry pack; when users can import their own,
+ * this is where that distinction goes.
+ */
+export function selectIsSynthetic(_s: Pick<AppState, 'company'>): boolean {
+  return true;
+}
+
+/**
+ * Runs the engine's validator on the current scenario with `rules` as the draft's rules and returns only the
+ * rule issues, with paths relative to `rules` (a demo scenario's own rules are not part of the list).
+ */
+export function validateRuleList(s: AppState, rules: DecisionRule[]): ValidationIssue[] {
+  const core: Core = {
+    industryId: s.industryId,
+    seed: s.seed,
+    horizonMonths: s.horizonMonths,
+    baselineActions: s.baselineActions,
+    draft: { ...s.draft, rules },
+    patch: s.patch,
+    shocks: s.shocks,
+    demoScenarioId: s.demoScenarioId,
+  };
+  const offset = demoScenarioOf(s.industry, s.demoScenarioId)?.rules?.length ?? 0;
+  const out: ValidationIssue[] = [];
+  for (const i of validateScenario(buildScenarios(s.industry, core).draft)) {
+    const m = /^rules\[(\d+)\](.*)$/.exec(i.path);
+    if (!m || Number(m[1]) < offset) continue;
+    out.push({ ...i, path: `rules[${Number(m[1]) - offset}]${m[2]}` });
+  }
+  return out;
 }

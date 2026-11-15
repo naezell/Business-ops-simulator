@@ -4,6 +4,7 @@ import { scenarioKey, useStore } from '@/services/store';
 import { num } from '@/services/format';
 import { Button, Card, Icon, Notice, Segmented, cx } from '@/components/ui';
 import { BottleneckCard, Tag, scaleOf } from '@/components/optimize/parts';
+import { SyntheticLabel } from '@/components/SyntheticLabel';
 import { BaselineSummary, CapacitySection, LossAttribution, SectionTitle, StrategyCard } from '@/components/optimize/StudySections';
 import { hiddenCount, phaseStates, visibleStrategies } from '@/components/optimize/studyModel';
 
@@ -54,10 +55,7 @@ export function OptimizePage() {
       >
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
-            <Tag tone="neutral" title="The company in this app is a built-in demonstration. Its numbers are made up and illustrative, not benchmarks.">
-              Synthetic demonstration data
-            </Tag>
-            <span className="text-[12px] text-muted">Results describe this simulated company under the assumptions shown, not a forecast.</span>
+            <SyntheticLabel withNote />
           </div>
 
           {(running || result) && <StudyHeader running={running} />}

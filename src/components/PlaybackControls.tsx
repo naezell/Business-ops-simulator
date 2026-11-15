@@ -180,9 +180,14 @@ export function DayFeed({
   nameOf: (id: Id) => string;
 }) {
   const shocks = useStore((st) => st.shocks);
+  const rules = useStore((st) => st.draft.rules);
+  const feedName = useMemo(() => {
+    const ruleNames = new Map(rules.map((r) => [r.id, r.name]));
+    return (id: Id) => ruleNames.get(id) ?? nameOf(id);
+  }, [rules, nameOf]);
   const items = useMemo(
-    () => dayFeed(day, events, logs, nameOf, (i) => (shocks[i] ? shockTitle(shocks[i], nameOf) : undefined)),
-    [day, events, logs, nameOf, shocks],
+    () => dayFeed(day, events, logs, feedName, (i) => (shocks[i] ? shockTitle(shocks[i], nameOf) : undefined)),
+    [day, events, logs, feedName, nameOf, shocks],
   );
   if (items.length === 0) return <p className="text-[13px] text-muted">Nothing notable was recorded on this day.</p>;
   return (

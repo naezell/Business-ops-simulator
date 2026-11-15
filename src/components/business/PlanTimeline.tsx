@@ -52,14 +52,14 @@ function place(chips: (Chip & { day: number })[], pxPerDay: number): { placed: P
   return { placed, rows: Math.max(1, rowEnd.length) };
 }
 
-interface AddOption {
+export interface AddOption {
   id: string;
   label: string;
   needsCrew?: boolean;
   make: (crewId: string | null) => Action;
 }
 
-function useAddOptions(): Record<LaneId, AddOption[]> {
+export function useAddOptions(): Record<LaneId, AddOption[]> {
   const industry = useStore((s) => s.industry);
   const { base } = useProjections();
   return useMemo(() => {

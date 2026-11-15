@@ -6,6 +6,8 @@ import { MarketingSection, PricingSection, SchedulingSection } from '@/component
 import { PlanTimeline } from '@/components/business/PlanTimeline';
 import { ConditionsPanel } from '@/components/conditions/ConditionsPanel';
 import { AssumptionsSection } from '@/components/business/AssumptionsSection';
+import { RulesSection } from '@/components/rules/RulesSection';
+import { SyntheticLabel } from '@/components/SyntheticLabel';
 
 const SECTIONS = [
   { id: 'sec-timeline', label: 'Plan timeline' },
@@ -14,6 +16,7 @@ const SECTIONS = [
   { id: 'sec-pricing', label: 'Pricing and services' },
   { id: 'sec-scheduling', label: 'Scheduling' },
   { id: 'sec-marketing', label: 'Marketing' },
+  { id: 'sec-rules', label: 'Decision rules' },
   { id: 'sec-conditions', label: 'Conditions' },
   { id: 'sec-assumptions', label: 'Assumptions' },
 ];
@@ -34,6 +37,7 @@ export function BusinessPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-5">
+      <SyntheticLabel />
       <Notice>
         Every change you make here becomes a chip in the scenario bar and is simulated as a <span className="font-medium text-ink">draft</span> next to the
         baseline. Remove a chip to undo it. Edits to facts, such as a wage or an assumption, change the baseline too.
@@ -76,6 +80,10 @@ export function BusinessPage() {
 
       <SectionHeading id="sec-marketing" title="Marketing" />
       <MarketingSection />
+
+      <div id="sec-rules" className="scroll-mt-44">
+        <RulesSection />
+      </div>
 
       <div id="sec-conditions" className="scroll-mt-44">
         <ConditionsPanel />

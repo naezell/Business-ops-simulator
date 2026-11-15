@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useStore } from '@/services/store';
+import { selectHasDraft, useStore } from '@/services/store';
 import { describeAction, kpisOf, type Kpis } from '@/services/derive';
 import { money, num, percent, signed, signedMoney, signedPoints } from '@/services/format';
 import { Button, DeltaText, Icon, Notice, cx, type Better } from './ui';
@@ -58,13 +58,16 @@ export function ScenarioBar() {
   const draftIssues = useStore((s) => s.draftIssues);
   const baselineIssues = useStore((s) => s.baselineIssues);
   const removeDraftAt = useStore((s) => s.removeDraftAt);
+  const draftRules = useStore((s) => s.draft.rules);
+  const setDraftRules = useStore((s) => s.setDraftRules);
   const resetDraft = useStore((s) => s.resetDraft);
   const adoptDraft = useStore((s) => s.adoptDraft);
   const { ctx } = useProjections();
   const [confirming, setConfirming] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
 
-  const hasDraft = draftActions.length > 0;
+  const hasDraft = useStore(selectHasDraft);
+  const hasActions = draftActions.length > 0;
   const b = kpisOf(baselineResult);
   const d = kpisOf(draftResult);
   const errors = [...baselineIssues, ...draftIssues].filter((i) => i.severity === 'error');
@@ -123,6 +126,25 @@ export function ScenarioBar() {
               </button>
             </span>
           ))}
+          {draftRules.map((rule) => (
+            <span
+              key={rule.id}
+              className="inline-flex max-w-full items-center gap-1 rounded-full border border-accent/30 bg-accent-soft py-0.5 pl-2.5 pr-1 text-[12.5px] text-accent"
+              data-chip
+              data-rule-chip
+              title="Decision rule"
+            >
+              <span className="truncate">Rule: {rule.name}</span>
+              <button
+                type="button"
+                aria-label={`Remove rule: ${rule.name}`}
+                onClick={() => setDraftRules(draftRules.filter((x) => x.id !== rule.id))}
+                className="grid h-5 w-5 shrink-0 place-items-center rounded-full text-accent hover:bg-accent/15"
+              >
+                <Icon.Close className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
           <span className="ml-auto flex flex-wrap items-center gap-2">
             {baselineActions.length > 0 && (
               <span className="text-[12px] text-muted" title="Decisions you adopted earlier are part of the baseline.">
@@ -156,7 +178,7 @@ export function ScenarioBar() {
                 <Button size="sm" variant="secondary" disabled={!hasDraft} onClick={resetDraft}>
                   Reset draft
                 </Button>
-                <Button size="sm" variant="primary" disabled={!hasDraft} onClick={() => setConfirming(true)}>
+                <Button size="sm" variant="primary" disabled={!hasActions} onClick={() => setConfirming(true)}>
                   Adopt draft as baseline
                 </Button>
               </>
