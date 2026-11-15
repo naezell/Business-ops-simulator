@@ -5,6 +5,9 @@
 import type { IndustryDefinition } from '../business/types';
 import type { OptimizationProgress, OptimizationRequest, OptimizationResult, OptimizerCatalog } from '../optimization';
 import type { WorkerRequest, WorkerResponse } from './simWorker';
+import { runStudy } from '../optimization';
+import type { StudyProgress, StudyRequest, StudyResult } from '../optimization';
+import { createStudyPool } from './studyPool';
 
 export interface OptimizationHandle {
   promise: Promise<OptimizationResult>;
@@ -90,6 +93,35 @@ export function runOptimization(
       settled = true;
       worker.terminate();
       rejectFn(abortError());
+    },
+  };
+}
+
+// ───────────── Study (optimizer v2) ─────────────
+
+export interface StudyHandle {
+  promise: Promise<StudyResult>;
+  /** Stops the study: workers are terminated and the promise rejects with AbortError. */
+  cancel: () => void;
+}
+
+/**
+ * Runs a study with a worker pool: the study orchestrates on the main thread (it only awaits
+ * batches), the workers simulate. Partial results arrive through `onProgress` after each phase.
+ */
+export function runStudyInPool(request: StudyRequest, onProgress?: (p: StudyProgress) => void, poolSize?: number): StudyHandle {
+  const pool = createStudyPool(request.scenario, poolSize);
+  let stopped = false;
+  const promise = runStudy(request, pool.evaluate, {
+    shouldStop: () => stopped,
+    clock: () => performance.now(),
+    onProgress,
+  }).finally(() => pool.terminate());
+  return {
+    promise,
+    cancel: () => {
+      stopped = true;
+      pool.terminate();
     },
   };
 }
