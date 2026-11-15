@@ -158,3 +158,25 @@ documentation and dependency updates are yours.
     are recorded in `tests/fixtures/benchmarks.ts`.
 14. **B7 hand value (H13).** "30 days of loaded pay" means the paid workdays in days
     0–29 (22 on a Mon–Fri week), i.e. 22 × 8 h × wage × (1 + burden).
+15. **Study: one direct full-detail run (O6).** Candidate generation needs per-customer
+    contribution (`drop-customers`), per-crew busy shares (`move-employee`, stress
+    "truck-out") and per-month cancellations (temporary variants), which a `RunDigest`
+    does not carry. The study runs one full-detail baseline in-process (charged 1 unit)
+    instead of widening the digest contract.
+16. **Study: replacement candidates (O6).** Only the age criterion (≥ 60% of useful life)
+    is used; per-asset upkeep is not in the digest. The auto-replace rule's threshold is
+    the catalog truck's annual straight-line depreciation (one value for all vehicles,
+    since a `forEach` rule has one threshold). The move-employee candidate moves the
+    weakest member of the least busy crew to the busiest crew (busy = (on site + travel) /
+    paid from `crewStats`); unserved capacity is not attributed per crew.
+17. **Study: loss bridge (O5).** Implements optimization-design §4.6 (scheduled → absence,
+    not worked, idle, travel, productivity → completed), exact by construction; the
+    theoretical figure is reported next to it, not bridged.
+18. **Study: long-run check may be dropped (O8).** `StrategyEvaluation.validation.longRun`
+    is `LongRunCheck | null` (additive widening of the contract; no consumer existed):
+    null when the budget ran out before the multi-year check, with the caveat "Not
+    validated long-run". Validation spends in two passes: stress + probes for finalists
+    best-first, then long runs best-first. Singles reservation raised from ≈250 to 300.
+19. **Study: synergy pairs** are screened on the screening seeds and re-evaluated on K
+    seeds; the screening Δ of each member is recomputed on the same seeds, so
+    `interaction` is Δab − Δa − Δb on identical seeds.

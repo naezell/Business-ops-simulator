@@ -260,7 +260,8 @@ export interface StrategyEvaluation {
   interaction?: number;
   assumptionSensitive: boolean;
   /** Present for finalists only. */
-  validation?: { longRun: LongRunCheck; stress: StressCheck; sensitivity: SensitivityCheck };
+  /** `longRun` is null when the budget forced the long-run check to be dropped (optimization-design §10). */
+  validation?: { longRun: LongRunCheck | null; stress: StressCheck; sensitivity: SensitivityCheck };
   /**
    * recommended  — feasible, improves, and (if validated) holds long-run, robustShare ≥ 2/3, no sign flip;
    * conditional  — improves in the planning horizon but fails one validation check (reason in `caveats`);
