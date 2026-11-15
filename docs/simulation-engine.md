@@ -95,7 +95,9 @@ customer generates exactly one visit every 7 days.
 
 For each active customer and each offered one-off job type `j`:
 one draw (ONEOFF_DEMAND, key = hash(customerId + ':' + j)); create an order if
-`u < annualRatePerCustomer_j × seasonality_j[m] / 365`.
+`u < annualRatePerCustomer_j × seasonality_j[m] / 365 × P_j^(−oneOffPriceElasticity)`
+(`oneOffPriceElasticity` missing ⇒ 0 ⇒ factor 1; `P_j ≤ 0` ⇒ factor 1). The same draw `u` is used
+at every price, so raising a price can only remove orders, never reshuffle them (ADR-008).
 
 ### 5.3 Orders
 

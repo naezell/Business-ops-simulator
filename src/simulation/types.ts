@@ -185,6 +185,11 @@ export interface MarketParams {
   baseMonthlyChurn: number;
   /** churn hazard ∝ priceIndex^(this). */
   retentionPriceElasticity: number;
+  /**
+   * One-off job arrival rate ∝ P_j^(−this), where P_j is that job type's price multiplier.
+   * Optional for backward compatibility; missing = 0 (no response). ADR-008.
+   */
+  oneOffPriceElasticity?: number;
   /** One-time churn probability per +1% price increase, applied when a price rises. */
   priceIncreaseShockChurnPerPct: number;
   /** churn hazard multiplier = 1 + this × serviceFailureScore. */

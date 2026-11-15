@@ -12,3 +12,4 @@ Add a new ADR for any breaking change to a `types.ts` contract or a normative sp
 | 005 | Floating-point dollars with accounting identities |
 | 006 | Pre-tax model; taxes out of scope |
 | 007 | Model delegation and file ownership |
+| 008 | One-off job demand responds to price |

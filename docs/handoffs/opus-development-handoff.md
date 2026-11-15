@@ -88,6 +88,7 @@ See the roadmap for status. Each is sized for one session.
 | N7 | Scenario import/export as JSON with schema version and validation | Opus | Round-trip test |
 | N8 | Phase 5: second industry (pool service) as data only; list any engine mechanic it genuinely needs as generic, config-driven features (e.g. chemical consumables = materials; route-day commitments) | Opus spec → Haiku data | Landscaping results bit-identical before/after |
 | N9 | Cloudflare Pages deployment config (`wrangler.toml` or Pages settings doc) — prepare only | Opus | Owner approval required before deploying |
+| N10 | Longer-horizon check for customer-base-changing plans: re-evaluate recommended pricing / service-mix / marketing candidates at 2–3× the horizon and report the later-year Δ next to the in-horizon Δ (see ADR-008 "Related") | Opus, then Sonnet for display | Known-answer test where a price rise wins in year 1 and loses over 3 years is reported as such |
 
 ## 6. When to escalate to the architect (Fable)
 
