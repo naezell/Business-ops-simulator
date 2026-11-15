@@ -292,10 +292,15 @@ export function demandStep(st: SimState, ctx: DayCtx): void {
     const k = mk.baseMonthlyChurn * Math.pow(pIdx, mk.retentionPriceElasticity);
     const w = mk.serviceFailureChurnWeight;
     const h0 = dailyHazardFromMonthly(clamp(k, 0, 0.5));
+    // Every hazard is clamped to at most hMax, so a draw >= hMax can never churn: skip the pow() then.
+    // The draw is counter-based, so computing it unconditionally changes no other draw.
+    const hMax = dailyHazardFromMonthly(0.5);
     for (const c of st.customers) {
       if (!c.active) continue;
+      const u = rand01FromPrefix(churnPrefix(seed, c), day, 0);
+      if (u >= hMax) continue;
       const h = c.failure === 0 ? h0 : dailyHazardFromMonthly(clamp(k * (1 + w * c.failure), 0, 0.5));
-      if (h > 0 && rand01FromPrefix(churnPrefix(seed, c), day, 0) < h) churnCustomer(st, ctx, c);
+      if (h > 0 && u < h) churnCustomer(st, ctx, c);
     }
   }
 

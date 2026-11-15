@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
 import { HORIZON_OPTIONS, useStore, type ViewId } from '@/services/store';
-import { num } from '@/services/format';
 import { Button, Icon, Segmented, cx } from './ui';
 
 export const VIEWS: { id: ViewId; label: string; icon: ReactNode }[] = [
@@ -57,7 +56,7 @@ export function Header() {
           />
           <span className="flex items-center gap-2 text-[12.5px] text-muted">
             <span title="Seed of the random conditions (weather, breakdowns, absences, demand). Baseline and draft share it, so differences come from your decisions.">
-              Seed <span className="num font-medium text-ink">{num(seed)}</span>
+              Seed <span className="num font-medium text-ink">{seed}</span>
             </span>
             <Button size="sm" onClick={reroll} title="Draw a new set of random conditions">
               Re-roll conditions

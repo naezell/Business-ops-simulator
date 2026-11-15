@@ -114,7 +114,7 @@ export function Card({
   id?: string;
 }) {
   return (
-    <section id={id} className={cx('rounded-lg border border-line bg-surface', className)}>
+    <section id={id} className={cx('min-w-0 rounded-lg border border-line bg-surface', className)}>
       {(title || actions) && (
         <header className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 border-b border-line px-4 py-3">
           <div className="min-w-0">
@@ -480,6 +480,35 @@ export function Notice({ tone = 'info', children, className }: { tone?: 'info' |
     <div className={cx('flex gap-2 rounded-md border px-3 py-2 text-[13px] leading-snug', tones[tone], className)} role={tone === 'error' ? 'alert' : undefined}>
       <span className="mt-px shrink-0">{tone === 'info' ? <Icon.Info className="h-4 w-4" /> : <Icon.Alert className="h-4 w-4" />}</span>
       <div className="min-w-0">{children}</div>
+    </div>
+  );
+}
+
+export function StatTile({
+  label,
+  value,
+  delta,
+  deltaText,
+  better,
+  sub,
+  hint,
+}: {
+  label: ReactNode;
+  value: ReactNode;
+  delta?: number;
+  deltaText?: string;
+  better?: Better;
+  sub?: ReactNode;
+  hint?: string;
+}) {
+  return (
+    <div className="min-w-0 rounded-lg border border-line bg-surface px-3 py-2.5" title={hint}>
+      <div className="text-[12px] leading-tight text-muted">{label}</div>
+      <div className="num mt-0.5 text-[20px] font-semibold leading-tight text-ink">{value}</div>
+      <div className="num mt-0.5 min-h-4 text-[12px] leading-tight text-muted">
+        {sub}
+        {delta !== undefined && deltaText && <DeltaText delta={delta} text={deltaText} better={better} className={cx(sub ? 'ml-1.5' : undefined)} />}
+      </div>
     </div>
   );
 }

@@ -95,7 +95,7 @@ export function ScenarioBar() {
                       <DeltaText delta={delta} text={Math.abs(delta) <= k.eps ? 'no change' : k.diff(delta)} better={k.better} epsilon={k.eps} />
                     </>
                   ) : (
-                    <span className="text-faint">Baseline</span>
+                    <span className="hidden text-faint sm:inline">Baseline</span>
                   )}
                 </div>
               </div>
