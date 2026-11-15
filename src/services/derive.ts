@@ -102,6 +102,10 @@ interface Tagged {
   /** Draft index of the action that removed this item, or -1. */
   removedByDraftIndex: number;
   removedOrigin: Origin | null;
+  /** Simulation day from which the item exists (0 for the opening company). */
+  fromDay: number;
+  /** Simulation day on which a removal takes effect, or null. */
+  removedDay: number | null;
 }
 
 export interface PEmployee extends Tagged {
@@ -144,13 +148,20 @@ export interface Projection {
   offered: Record<Id, boolean>;
 }
 
-const tag = (origin: Origin, draftIndex: number): Tagged => ({
+const tag = (origin: Origin, draftIndex: number, fromDay = 0): Tagged => ({
   origin,
   draftIndex,
   removed: false,
   removedByDraftIndex: -1,
   removedOrigin: null,
+  fromDay,
+  removedDay: null,
 });
+
+/** True when the item is part of the company on `day` (created on or before it and not yet removed). */
+export function activeOnDay(item: Pick<Tagged, 'fromDay' | 'removedDay'>, day: number): boolean {
+  return item.fromDay <= day && (item.removedDay === null || item.removedDay > day);
+}
 
 /** Index of the action that created an item, from the engine's id scheme (`h-d{day}-{i}-{k}`, `a-d{day}-{i}-{k}`, `crew-d{day}-{i}`). */
 function creatorIndex(id: Id): number {
@@ -183,13 +194,19 @@ export function projectCompany(company: CompanyConfig, adopted: PlannedAction[],
   const originOf = (id: Id): Tagged => {
     if (baseIds.has(id)) return tag('base', -1);
     const i = creatorIndex(id);
-    return i >= adopted.length ? tag('draft', i - adopted.length) : tag('adopted', -1);
+    const fromDay = all[i]?.day ?? 0;
+    return i >= adopted.length ? tag('draft', i - adopted.length, fromDay) : tag('adopted', -1, fromDay);
   };
   /** Marks `t` removed by the first applied removal action matching `hit`. */
   const markRemoved = (t: Tagged, hit: (a: Action) => boolean): void => {
     const i = all.findIndex((pa, k) => !rejected.has(k) && hit(pa.action));
     const origin: Origin = i >= adopted.length ? 'draft' : 'adopted';
-    Object.assign(t, { removed: true, removedByDraftIndex: origin === 'draft' ? i - adopted.length : -1, removedOrigin: origin });
+    Object.assign(t, {
+      removed: true,
+      removedByDraftIndex: origin === 'draft' ? i - adopted.length : -1,
+      removedOrigin: origin,
+      removedDay: all[i]?.day ?? 0,
+    });
   };
 
   // Items created by an action the engine rejects in the real list (possible only with removals disabled) are dropped.
@@ -653,4 +670,14 @@ export function nameLookup(p: Projection, industry: IndustryDefinition, result?:
   for (const j of industry.jobTypes) map.set(j.id, j.name);
   if (result) for (const s of Object.values(result.crewStats)) if (!map.has(s.crewId)) map.set(s.crewId, s.name);
   return (id) => map.get(id) ?? (id.startsWith('h-') ? 'New hire' : id);
+}
+
+/** People on the roster on a given simulation day, honouring the dates of hires and removals. */
+export function employeesOnDay(p: Projection, day: number): PEmployee[] {
+  return p.employees.filter((e) => activeOnDay(e, day));
+}
+
+/** Crews that exist on a given simulation day. */
+export function crewsOnDay(p: Projection, day: number): PCrew[] {
+  return p.crews.filter((c) => activeOnDay(c, day));
 }

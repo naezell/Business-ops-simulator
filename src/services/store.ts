@@ -12,9 +12,11 @@ import type { IndustryDefinition } from '@/business/types';
 import { applyPatch, chipKey, type CompanyPatch } from './derive';
 import type { Objective, OptimizationProgress, OptimizationResult } from '@/optimization';
 import { catalogFromIndustry, runOptimization, type OptimizationHandle } from './simClient';
-import { clearPersisted, loadPersisted, savePersisted, type PersistedState, type ViewId } from './persistence';
+import { STORAGE_VERSION, clearPersisted, loadPersisted, savePersisted, type DraftPlan, type PersistedState, type ViewId } from './persistence';
+import { clampDay } from './planTimeline';
+import type { DecisionRule } from '@/simulation/types-twin';
 
-export type { ViewId } from './persistence';
+export type { DraftPlan, ViewId } from './persistence';
 
 export const HORIZON_OPTIONS = [3, 6, 12] as const;
 export const DEFAULT_SEED = 20240101;
@@ -31,7 +33,8 @@ interface Core {
   seed: number;
   horizonMonths: number;
   baselineActions: PlannedAction[];
-  draftActions: PlannedAction[];
+  /** Pending decisions: dated actions plus decision rules (rules are not simulated yet). */
+  draft: DraftPlan;
   patch: CompanyPatch;
 }
 
@@ -68,7 +71,7 @@ function buildScenarios(industry: IndustryDefinition, core: Core): { baseline: S
     horizonDays,
     seed: core.seed,
   };
-  const draft: Scenario = { ...baseline, id: 'draft', name: 'Draft', actions: [...core.baselineActions, ...core.draftActions] };
+  const draft: Scenario = { ...baseline, id: 'draft', name: 'Draft', actions: [...core.baselineActions, ...core.draft.actions] };
   return { baseline, draft, company };
 }
 
@@ -88,7 +91,7 @@ export interface OptState {
 
 /** Fingerprint of everything that changes what the optimizer would see. */
 export function scenarioKey(s: Core): string {
-  return JSON.stringify([s.industryId, s.seed, s.horizonMonths, s.patch, s.baselineActions, s.draftActions]);
+  return JSON.stringify([s.industryId, s.seed, s.horizonMonths, s.patch, s.baselineActions, s.draft]);
 }
 
 export interface AppState extends Core {
@@ -96,6 +99,8 @@ export interface AppState extends Core {
   /** Company with user edits applied (before any actions). */
   company: CompanyConfig;
   horizonDays: number;
+  /** Mirror of `draft.actions` for components that only need the dated actions. */
+  draftActions: PlannedAction[];
   editedPaths: Set<string>;
   baselineResult: SimulationResult;
   draftResult: SimulationResult;
@@ -109,8 +114,15 @@ export interface AppState extends Core {
 
   setView: (v: ViewId) => void;
   setSelectedDay: (d: number) => void;
-  /** Adds an action as a chip, or replaces the chip with the same key. */
+  /**
+   * Adds a dated action as a chip, or replaces the chip with the same key (keeping its day unless `day` is given).
+   * `day` is a simulation day, 0 = immediately; it is clamped to the horizon.
+   */
   setDraftAction: (action: Action, day?: number) => void;
+  /** Changes the day of the draft decision at `index` (clamped to the horizon). */
+  moveDraftAction: (index: number, day: number) => void;
+  /** Replaces the draft's decision rules (stored and persisted; not simulated yet). */
+  setDraftRules: (rules: DecisionRule[]) => void;
   /** Removes the chip with the given key (no-op if absent). */
   removeDraftByKey: (key: string) => void;
   /** Appends several planned actions through the same de-duplication as chips. Used by the optimizer. */
@@ -138,7 +150,7 @@ interface Built {
 }
 
 function freshCore(industryId: string): Core {
-  return { industryId, seed: DEFAULT_SEED, horizonMonths: 12, baselineActions: [], draftActions: [], patch: {} };
+  return { industryId, seed: DEFAULT_SEED, horizonMonths: 12, baselineActions: [], draft: { actions: [], rules: [] }, patch: {} };
 }
 
 /** Builds and simulates from a core; throws if the baseline cannot be simulated. */
@@ -148,7 +160,7 @@ function buildAll(core: Core): Built {
   const b = simulate(baseline);
   if (!b.result) throw new Error('Baseline could not be simulated: ' + b.issues.map((i) => i.message).join('; '));
   let d: Outcome;
-  if (core.draftActions.length === 0) d = { result: b.result, issues: b.issues };
+  if (core.draft.actions.length === 0) d = { result: b.result, issues: b.issues };
   else d = simulate(draft);
   return {
     industry,
@@ -170,7 +182,7 @@ function initial(): Built & { selectedDay: number; view: ViewId } {
         seed: stored.seed,
         horizonMonths: (HORIZON_OPTIONS as readonly number[]).includes(stored.horizonMonths) ? stored.horizonMonths : 12,
         baselineActions: stored.baselineActions,
-        draftActions: stored.draftActions,
+        draft: stored.draft,
         patch: stored.patch,
       };
       const built = buildAll(core);
@@ -203,15 +215,22 @@ export const useStore = create<AppState>()((set, get) => {
       seed: s.seed,
       horizonMonths: s.horizonMonths,
       baselineActions: s.baselineActions,
-      draftActions: s.draftActions,
+      draft: s.draft,
       patch: s.patch,
       ...next,
     };
     const industry = getIndustry(core.industryId);
     const company = applyPatch(sampleCompany(industry), core.patch);
     const horizonDays = horizonDaysFor(company.startMonth, core.horizonMonths);
+    // A shorter horizon pulls later decisions back to its last day so they stay valid.
+    if (horizonDays !== s.horizonDays) {
+      const fit = (list: PlannedAction[]) => (list.some((p) => p.day >= horizonDays) ? list.map((p) => ({ ...p, day: clampDay(p.day, horizonDays) })) : list);
+      core.baselineActions = fit(core.baselineActions);
+      core.draft = { ...core.draft, actions: fit(core.draft.actions) };
+    }
     set({
       ...core,
+      draftActions: core.draft.actions,
       company,
       horizonDays,
       editedPaths: new Set(Object.keys(core.patch)),
@@ -231,7 +250,7 @@ export const useStore = create<AppState>()((set, get) => {
       seed: s.seed,
       horizonMonths: s.horizonMonths,
       baselineActions: s.baselineActions,
-      draftActions: s.draftActions,
+      draft: s.draft,
       patch: s.patch,
     };
     const industry = getIndustry(core.industryId);
@@ -249,7 +268,7 @@ export const useStore = create<AppState>()((set, get) => {
     }
     let draftResult = s.draftResult;
     let draftIssues: ValidationIssue[];
-    if (core.draftActions.length === 0) {
+    if (core.draft.actions.length === 0) {
       draftResult = baselineResult;
       draftIssues = baselineIssues;
     } else {
@@ -260,7 +279,7 @@ export const useStore = create<AppState>()((set, get) => {
     const baselineBroken = baselineIssues.some((i) => i.severity === 'error');
     const draftBroken = draftIssues.some((i) => i.severity === 'error');
     // Never show a draft result computed from an older baseline than the one on screen.
-    if (draftBroken && !baselineBroken && core.draftActions.length > 0 && (draftResult.seed !== core.seed || draftResult.horizonDays !== baselineResult.horizonDays)) {
+    if (draftBroken && !baselineBroken && core.draft.actions.length > 0 && (draftResult.seed !== core.seed || draftResult.horizonDays !== baselineResult.horizonDays)) {
       draftResult = baselineResult;
     }
     set({ baselineResult, draftResult, baselineIssues, draftIssues, pending: false });
@@ -271,6 +290,7 @@ export const useStore = create<AppState>()((set, get) => {
     industry: init.industry,
     company: init.company,
     horizonDays: init.baselineResult.horizonDays,
+    draftActions: init.core.draft.actions,
     editedPaths: new Set(Object.keys(init.core.patch)),
     baselineResult: init.baselineResult,
     draftResult: init.draftResult,
@@ -284,24 +304,39 @@ export const useStore = create<AppState>()((set, get) => {
     setView: (view) => set({ view }),
     setSelectedDay: (d) => set((s) => ({ selectedDay: Math.max(0, Math.min(s.horizonDays - 1, Math.round(d))) })),
 
-    setDraftAction: (action, day = 0) => {
+    setDraftAction: (action, day) => {
+      const s0 = get();
       const key = chipKey(action);
-      const list = get().draftActions.slice();
+      const list = s0.draft.actions.slice();
       const at = key === null ? -1 : list.findIndex((p) => chipKey(p.action) === key);
-      if (at >= 0) list[at] = { day, action };
-      else list.push({ day, action });
-      commit({ draftActions: list });
+      const when = clampDay(day ?? (at >= 0 ? list[at].day : 0), s0.horizonDays);
+      if (at >= 0) list[at] = { day: when, action };
+      else list.push({ day: when, action });
+      commit({ draft: { ...s0.draft, actions: list } });
     },
+    moveDraftAction: (index, day) => {
+      const s0 = get();
+      const cur = s0.draft.actions[index];
+      if (!cur) return;
+      const when = clampDay(day, s0.horizonDays);
+      if (when === cur.day) return;
+      const list = s0.draft.actions.slice();
+      list[index] = { ...cur, day: when };
+      commit({ draft: { ...s0.draft, actions: list } });
+    },
+    setDraftRules: (rules) => commit({ draft: { ...get().draft, rules } }),
     applyPlannedActions: (actions, candidateId) => {
-      const list = get().draftActions.slice();
+      const s0 = get();
+      const list = s0.draft.actions.slice();
       for (const pa of actions) {
         const key = chipKey(pa.action);
         const at = key === null ? -1 : list.findIndex((p) => chipKey(p.action) === key);
-        if (at >= 0) list[at] = { day: pa.day, action: pa.action };
-        else list.push({ day: pa.day, action: pa.action });
+        const day = clampDay(pa.day, s0.horizonDays);
+        if (at >= 0) list[at] = { day, action: pa.action };
+        else list.push({ day, action: pa.action });
       }
-      const opt = get().opt;
-      commit({ draftActions: list }, candidateId ? { opt: { ...opt, appliedIds: [...opt.appliedIds, candidateId] } } : {});
+      const opt = s0.opt;
+      commit({ draft: { ...s0.draft, actions: list } }, candidateId ? { opt: { ...opt, appliedIds: [...opt.appliedIds, candidateId] } } : {});
     },
     startOptimization: (objective) => {
       const s = get();
@@ -311,7 +346,7 @@ export const useStore = create<AppState>()((set, get) => {
         seed: s.seed,
         horizonMonths: s.horizonMonths,
         baselineActions: s.baselineActions,
-        draftActions: s.draftActions,
+        draft: s.draft,
         patch: s.patch,
       };
       const key = scenarioKey(core);
@@ -353,15 +388,17 @@ export const useStore = create<AppState>()((set, get) => {
       h.cancel();
     },
     removeDraftByKey: (key) => {
-      const list = get().draftActions.filter((p) => chipKey(p.action) !== key);
-      if (list.length !== get().draftActions.length) commit({ draftActions: list });
+      const d = get().draft;
+      const list = d.actions.filter((p) => chipKey(p.action) !== key);
+      if (list.length !== d.actions.length) commit({ draft: { ...d, actions: list } });
     },
-    removeDraftAt: (index) => commit({ draftActions: get().draftActions.filter((_, i) => i !== index) }),
-    resetDraft: () => commit({ draftActions: [] }),
+    removeDraftAt: (index) => commit({ draft: { ...get().draft, actions: get().draft.actions.filter((_, i) => i !== index) } }),
+    resetDraft: () => commit({ draft: { actions: [], rules: [] } }),
     adoptDraft: () => {
       const s = get();
-      if (s.draftActions.length === 0) return;
-      commit({ baselineActions: [...s.baselineActions, ...s.draftActions], draftActions: [] });
+      if (s.draft.actions.length === 0) return;
+      // Adopted decisions keep their dates.
+      commit({ baselineActions: [...s.baselineActions, ...s.draft.actions], draft: { ...s.draft, actions: [] } });
     },
     setHorizonMonths: (m) => commit({ horizonMonths: m }),
     rerollSeed: () => commit({ seed: 1 + Math.floor(Math.random() * 999_999) }),
@@ -383,12 +420,12 @@ useStore.subscribe((s) => {
   if (persistTimer) clearTimeout(persistTimer);
   persistTimer = setTimeout(() => {
     const state: PersistedState = {
-      version: 1,
+      version: STORAGE_VERSION,
       industryId: s.industryId,
       seed: s.seed,
       horizonMonths: s.horizonMonths,
       baselineActions: s.baselineActions,
-      draftActions: s.draftActions,
+      draft: s.draft,
       patch: s.patch,
       selectedDay: s.selectedDay,
       view: s.view,

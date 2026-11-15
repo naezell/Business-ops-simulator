@@ -3,9 +3,11 @@ import { useStore } from '@/services/store';
 import { Button, Disclosure, Notice } from '@/components/ui';
 import { CrewsSection, FleetSection } from '@/components/business/PeopleSection';
 import { MarketingSection, PricingSection, SchedulingSection } from '@/components/business/DecisionsSection';
+import { PlanTimeline } from '@/components/business/PlanTimeline';
 import { AssumptionsSection } from '@/components/business/AssumptionsSection';
 
 const SECTIONS = [
+  { id: 'sec-timeline', label: 'Plan timeline' },
   { id: 'sec-crews', label: 'Crews and people' },
   { id: 'sec-fleet', label: 'Fleet and equipment' },
   { id: 'sec-pricing', label: 'Pricing and services' },
@@ -47,6 +49,10 @@ export function BusinessPage() {
           </button>
         ))}
       </nav>
+
+      <div id="sec-timeline" className="scroll-mt-44">
+        <PlanTimeline />
+      </div>
 
       <SectionHeading id="sec-crews" title="Crews and people">
         Hire, remove people, add a standard crew or remove a crew.

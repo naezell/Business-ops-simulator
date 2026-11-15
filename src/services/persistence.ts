@@ -6,22 +6,29 @@
  * the industry pack, so improvements to the sample data are not hidden behind a stale copy.
  */
 import type { PlannedAction } from '@/simulation';
+import type { DecisionRule } from '@/simulation/types-twin';
 import type { CompanyPatch } from './derive';
 
 export const STORAGE_KEY = 'business-ops-simulator:state';
-export const STORAGE_VERSION = 1;
+export const STORAGE_VERSION = 2;
 
 export type ViewId = 'operations' | 'financials' | 'business' | 'optimize';
 export const VIEW_IDS: ViewId[] = ['operations', 'financials', 'business', 'optimize'];
+
+/** Pending decisions: dated actions plus decision rules (rules are stored but not yet simulated). */
+export interface DraftPlan {
+  actions: PlannedAction[];
+  rules: DecisionRule[];
+}
 
 export interface PersistedState {
   version: typeof STORAGE_VERSION;
   industryId: string;
   seed: number;
   horizonMonths: number;
-  /** Decisions already adopted into the baseline. */
+  /** Decisions already adopted into the baseline (dated). */
   baselineActions: PlannedAction[];
-  draftActions: PlannedAction[];
+  draft: DraftPlan;
   /** Facts and assumptions the user edited, applied to baseline and draft alike. */
   patch: CompanyPatch;
   selectedDay: number;
@@ -35,35 +42,59 @@ function isPlannedAction(x: unknown): x is PlannedAction {
   return isObj(x) && isFiniteNum(x.day) && x.day >= 0 && isObj(x.action) && typeof x.action.type === 'string';
 }
 
+function isRule(x: unknown): x is DecisionRule {
+  return isObj(x) && typeof x.id === 'string' && typeof x.name === 'string' && Array.isArray(x.when) && Array.isArray(x.then);
+}
+
+/**
+ * Validates parsed storage data and upgrades older schema versions.
+ *  - v1: `draftActions: PlannedAction[]`           -> v2: `draft: { actions, rules: [] }`
+ * Returns null for anything unusable (corrupt, unknown version).
+ */
+export function migratePersisted(data: unknown): PersistedState | null {
+  if (!isObj(data)) return null;
+  if (data.version !== 1 && data.version !== STORAGE_VERSION) return null;
+  if (typeof data.industryId !== 'string') return null;
+  if (!isFiniteNum(data.seed) || !isFiniteNum(data.horizonMonths)) return null;
+  if (!Array.isArray(data.baselineActions) || !data.baselineActions.every(isPlannedAction)) return null;
+
+  let draft: DraftPlan;
+  if (data.version === 1) {
+    if (!Array.isArray(data.draftActions) || !data.draftActions.every(isPlannedAction)) return null;
+    draft = { actions: data.draftActions, rules: [] };
+  } else {
+    const d = data.draft;
+    if (!isObj(d) || !Array.isArray(d.actions) || !d.actions.every(isPlannedAction)) return null;
+    if (!Array.isArray(d.rules) || !d.rules.every(isRule)) return null;
+    draft = { actions: d.actions, rules: d.rules };
+  }
+
+  if (!isObj(data.patch)) return null;
+  const patch: CompanyPatch = {};
+  for (const [k, v] of Object.entries(data.patch)) {
+    if (!isFiniteNum(v)) return null;
+    patch[k] = v;
+  }
+  const view = VIEW_IDS.includes(data.view as ViewId) ? (data.view as ViewId) : 'operations';
+  return {
+    version: STORAGE_VERSION,
+    industryId: data.industryId,
+    seed: data.seed,
+    horizonMonths: data.horizonMonths,
+    baselineActions: data.baselineActions,
+    draft,
+    patch,
+    selectedDay: isFiniteNum(data.selectedDay) ? Math.max(0, Math.floor(data.selectedDay)) : 0,
+    view,
+  };
+}
+
 /** Returns validated state, or null when nothing usable is stored. */
 export function loadPersisted(): PersistedState | null {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
-    const data: unknown = JSON.parse(raw);
-    if (!isObj(data) || data.version !== STORAGE_VERSION) return null;
-    if (typeof data.industryId !== 'string') return null;
-    if (!isFiniteNum(data.seed) || !isFiniteNum(data.horizonMonths)) return null;
-    if (!Array.isArray(data.baselineActions) || !data.baselineActions.every(isPlannedAction)) return null;
-    if (!Array.isArray(data.draftActions) || !data.draftActions.every(isPlannedAction)) return null;
-    if (!isObj(data.patch)) return null;
-    const patch: CompanyPatch = {};
-    for (const [k, v] of Object.entries(data.patch)) {
-      if (!isFiniteNum(v)) return null;
-      patch[k] = v;
-    }
-    const view = VIEW_IDS.includes(data.view as ViewId) ? (data.view as ViewId) : 'operations';
-    return {
-      version: STORAGE_VERSION,
-      industryId: data.industryId,
-      seed: data.seed,
-      horizonMonths: data.horizonMonths,
-      baselineActions: data.baselineActions,
-      draftActions: data.draftActions,
-      patch,
-      selectedDay: isFiniteNum(data.selectedDay) ? Math.max(0, Math.floor(data.selectedDay)) : 0,
-      view,
-    };
+    return migratePersisted(JSON.parse(raw));
   } catch {
     return null;
   }
