@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { landscaping } from '../../src/business/landscaping';
-import {
-  createDemoTwinScenario,
-  demoTwinParamMeta,
-  demoTwinScenarios,
-} from '../../src/business/landscaping/demoTwin';
+import { landscapingParamMeta } from '../../src/business/landscaping/paramMeta';
+import { createDemoTwinScenario, demoTwinScenarios } from '../../src/business/landscaping/demoTwin';
 import { runSimulation, validateScenario } from '../../src/simulation';
 import type { Scenario } from '../../src/simulation/types';
 
@@ -267,11 +264,32 @@ describe('determinism', () => {
 });
 
 describe('dynamics metadata', () => {
-  it('every demo ParamMeta path resolves to a finite number inside [min, max] on the demo company', () => {
-    const entries = Object.entries(demoTwinParamMeta);
+  it('every twin ParamMeta path resolves to a finite number inside [min, max] on the demo company', () => {
     // 12 workforce (7 scalars + 3 market wages + tenure boost + raise), 3 market, 2 vehicle/equipment aging, 1 finance = 18.
-    expect(entries.length).toBe(18);
-    for (const [key, meta] of entries) {
+    const twinPaths = [
+      'workforce.learningGain',
+      'workforce.learningDays',
+      'workforce.fatigueThresholdHours',
+      'workforce.quitFatigueWeight',
+      'workforce.absenceFatigueWeight',
+      'workforce.productivityFatigueLoss',
+      'workforce.wageQuitElasticity',
+      'workforce.marketWageBySkill.1',
+      'workforce.marketWageBySkill.2',
+      'workforce.marketWageBySkill.3',
+      'workforce.earlyTenureQuitBoost',
+      'workforce.annualRaiseRate',
+      'market.referralsPerCustomerYear',
+      'market.marketSize',
+      'market.newCustomerChurnBoost',
+      'reliability.vehicle.maintenanceAgeFactorPerYear',
+      'reliability.equipment.maintenanceAgeFactorPerYear',
+      'finance.resaleShareOfBookValue',
+    ];
+    expect(twinPaths.length).toBe(18);
+    for (const key of twinPaths) {
+      const meta = landscapingParamMeta[key];
+      expect(meta, key).toBeDefined();
       expect(meta.path, key).toBe(key);
       expect(meta.provenance, key).toBe('industry-assumption');
       const value = valueAt(company, meta.path);

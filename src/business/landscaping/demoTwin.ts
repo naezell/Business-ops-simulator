@@ -7,17 +7,9 @@ import type {
   Financing,
   Id,
   JobTypeDef,
-  ParamMeta,
   Vehicle,
 } from '../../simulation/types';
-import type {
-  AssetAging,
-  CustomerDynamics,
-  FinanceDynamics,
-  FloatPolicy,
-  TwinScenario,
-  WorkforceDynamics,
-} from '../../simulation/types-twin';
+import type { TwinScenario } from '../../simulation/types-twin';
 import type { DemoScenarioDef } from '../types';
 import { equipmentCatalog, vehicleCatalog } from './catalog';
 import { landscapingJobTypes } from './jobTypes';
@@ -83,96 +75,6 @@ const SIZE_FACTOR = {
   commercial: { min: 3, span: 5 },
   largeSite: { min: 10, span: 8 },
 } as const;
-
-// ───────────────────────── Workforce, customer, asset, policy and finance dynamics ─────────────────────────
-// Each block below is an OPTIONAL extension that the engine does not read yet. A later engine task
-// merges these fields into the matching params. They are spread into the company so the data is
-// already in place and type-checked against the twin contracts.
-
-/** Illustrative. marketWageBySkill index = skill; index 0 is unused (skill starts at 1) and mirrors skill 1. */
-export const demoWorkforceDynamics: WorkforceDynamics = {
-  learningGain: 0.15,
-  learningDays: 120,
-  fatigueThresholdHours: 45,
-  quitFatigueWeight: 1.5,
-  absenceFatigueWeight: 1.0,
-  productivityFatigueLoss: 0.5,
-  wageQuitElasticity: 1.5,
-  marketWageBySkill: [17.5, 17.5, 20, 24],
-  earlyTenureQuitBoost: 1.0,
-  annualRaiseRate: 0.03,
-};
-
-/** Illustrative. Referral and market-size values are assumptions, not market data. */
-export const demoCustomerDynamics: CustomerDynamics = {
-  referralsPerCustomerYear: 0.1,
-  marketSize: 400,
-  newCustomerChurnBoost: 1.0,
-};
-
-/** Illustrative. Applied to both vehicle and equipment breakdown parameters. */
-export const demoAssetAging: AssetAging = {
-  maintenanceAgeFactorPerYear: 0.1,
-};
-
-/** Crews that cannot deploy may float their idle members onto deployed crews. */
-export const demoFloatPolicy: FloatPolicy = {
-  floatIdleWorkers: true,
-};
-
-/** Illustrative resale assumption for disposed assets. */
-export const demoFinanceDynamics: FinanceDynamics = {
-  resaleShareOfBookValue: 0.8,
-};
-
-/** Metadata for the dynamics above, keyed by dot path. Kept separate from landscapingParamMeta until the engine merge. */
-const ASSUMPTION_NOTE = 'Illustrative assumption for the synthetic demo scenario, not a benchmark.';
-
-function assumption(
-  path: string,
-  label: string,
-  unit: ParamMeta['unit'],
-  min: number,
-  max: number,
-  step: number,
-): ParamMeta {
-  return { path, label, description: ASSUMPTION_NOTE, unit, min, max, step, provenance: 'industry-assumption' };
-}
-
-export const demoTwinParamMeta: Record<string, ParamMeta> = {
-  'workforce.learningGain': assumption('workforce.learningGain', 'Learning gain', 'fraction', 0, 0.5, 0.01),
-  'workforce.learningDays': assumption('workforce.learningDays', 'Learning time constant', 'days', 0, 365, 1),
-  'workforce.fatigueThresholdHours': assumption('workforce.fatigueThresholdHours', 'Fatigue threshold', 'hours', 0, 80, 1),
-  'workforce.quitFatigueWeight': assumption('workforce.quitFatigueWeight', 'Quit sensitivity to fatigue', 'multiplier', 0, 5, 0.1),
-  'workforce.absenceFatigueWeight': assumption('workforce.absenceFatigueWeight', 'Absence sensitivity to fatigue', 'multiplier', 0, 5, 0.1),
-  'workforce.productivityFatigueLoss': assumption('workforce.productivityFatigueLoss', 'Productivity loss from fatigue', 'multiplier', 0, 1, 0.01),
-  'workforce.wageQuitElasticity': assumption('workforce.wageQuitElasticity', 'Wage elasticity of quits', 'elasticity', 0, 5, 0.1),
-  'workforce.marketWageBySkill.1': assumption('workforce.marketWageBySkill.1', 'Market wage, skill 1', 'usd/hour', 10, 40, 0.5),
-  'workforce.marketWageBySkill.2': assumption('workforce.marketWageBySkill.2', 'Market wage, skill 2', 'usd/hour', 10, 40, 0.5),
-  'workforce.marketWageBySkill.3': assumption('workforce.marketWageBySkill.3', 'Market wage, skill 3', 'usd/hour', 10, 40, 0.5),
-  'workforce.earlyTenureQuitBoost': assumption('workforce.earlyTenureQuitBoost', 'Early-tenure quit boost', 'multiplier', 0, 5, 0.1),
-  'workforce.annualRaiseRate': assumption('workforce.annualRaiseRate', 'Annual raise rate', 'fraction', 0, 0.2, 0.005),
-  'market.referralsPerCustomerYear': assumption('market.referralsPerCustomerYear', 'Referrals per customer per year', 'count', 0, 2, 0.01),
-  'market.marketSize': assumption('market.marketSize', 'Addressable customers', 'count', 1, 10000, 1),
-  'market.newCustomerChurnBoost': assumption('market.newCustomerChurnBoost', 'New-customer churn boost', 'multiplier', 0, 10, 0.1),
-  'reliability.vehicle.maintenanceAgeFactorPerYear': assumption(
-    'reliability.vehicle.maintenanceAgeFactorPerYear',
-    'Vehicle upkeep growth per year of age',
-    'multiplier',
-    0,
-    1,
-    0.01,
-  ),
-  'reliability.equipment.maintenanceAgeFactorPerYear': assumption(
-    'reliability.equipment.maintenanceAgeFactorPerYear',
-    'Equipment upkeep growth per year of age',
-    'multiplier',
-    0,
-    1,
-    0.01,
-  ),
-  'finance.resaleShareOfBookValue': assumption('finance.resaleShareOfBookValue', 'Resale share of book value', 'fraction', 0, 1, 0.01),
-};
 
 // ───────────────────────── Helpers ─────────────────────────
 
@@ -384,7 +286,8 @@ export function createDemoTwinScenario(): TwinScenario {
         routing: 'nearest',
         autoBackfill: true,
         acceptNewCustomers: true,
-        ...demoFloatPolicy,
+        // Illustrative: idle members of crews that cannot deploy may float onto deployed crews.
+        floatIdleWorkers: true,
       },
       market: {
         organicLeadsPerMonth: 6,
@@ -406,7 +309,10 @@ export function createDemoTwinScenario(): TwinScenario {
           sizeFactorMax: 1.6,
           recurringJobTypeMix: { 'mow-weekly': 0.8, 'mow-biweekly': 0.2 },
         },
-        ...demoCustomerDynamics,
+        // Illustrative twin dynamics. Referral and market-size values are assumptions, not market data.
+        referralsPerCustomerYear: 0.1,
+        marketSize: 400,
+        newCustomerChurnBoost: 1.0,
       },
       workforce: {
         payrollBurdenRate: 0.22,
@@ -420,7 +326,17 @@ export function createDemoTwinScenario(): TwinScenario {
         rampStartProductivity: 0.6,
         crewSizeCoordinationLoss: 0.05,
         payPeriodDays: 14,
-        ...demoWorkforceDynamics,
+        // Illustrative twin dynamics. marketWageBySkill index = skill; index 0 is unused and mirrors skill 1.
+        learningGain: 0.15,
+        learningDays: 120,
+        fatigueThresholdHours: 45,
+        quitFatigueWeight: 1.5,
+        absenceFatigueWeight: 1.0,
+        productivityFatigueLoss: 0.5,
+        wageQuitElasticity: 1.5,
+        marketWageBySkill: [17.5, 17.5, 20, 24],
+        earlyTenureQuitBoost: 1.0,
+        annualRaiseRate: 0.03,
       },
       reliability: {
         vehicle: {
@@ -430,7 +346,8 @@ export function createDemoTwinScenario(): TwinScenario {
           repairDaysMax: 4,
           repairCostMin: 300,
           repairCostMax: 1800,
-          ...demoAssetAging,
+          // Illustrative: routine maintenance cost grows 10% per year of age.
+          maintenanceAgeFactorPerYear: 0.1,
         },
         equipment: {
           dailyProb: 0.006,
@@ -439,7 +356,8 @@ export function createDemoTwinScenario(): TwinScenario {
           repairDaysMax: 3,
           repairCostMin: 80,
           repairCostMax: 600,
-          ...demoAssetAging,
+          // Illustrative: routine maintenance cost grows 10% per year of age.
+          maintenanceAgeFactorPerYear: 0.1,
         },
       },
       weather: {
@@ -471,7 +389,8 @@ export function createDemoTwinScenario(): TwinScenario {
           badDebtRate: 0.01,
         },
         newLoan: { annualRate: 0.085, termMonths: 60, downPaymentFraction: 0.15 },
-        ...demoFinanceDynamics,
+        // Illustrative resale assumption for disposed assets. ownerDistributionCashAbove is omitted (never pays out).
+        resaleShareOfBookValue: 0.8,
       },
     },
   };
