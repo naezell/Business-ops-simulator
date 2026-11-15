@@ -60,6 +60,22 @@ export const landscapingParamMeta: Record<string, ParamMeta> = Object.fromEntrie
   meta('workforce.crewSizeCoordinationLoss', 'Crew size coordination loss', 'Illustrative assumption for the drop in every crew member work rate for each additional person on the crew.', 'fraction', 0, 0.5, 0.005, ASSUMPTION),
   meta('workforce.payPeriodDays', 'Pay period length', 'Number of days between payroll runs.', 'days', 1, 31, 1, SYNTHETIC),
 
+  // reliability: vehicles
+  meta('reliability.vehicle.dailyProb', 'Vehicle breakdown chance per workday', 'Illustrative assumption for the chance that a new vehicle breaks down on a given workday.', 'fraction', 0, 0.05, 0.0005, ASSUMPTION),
+  meta('reliability.vehicle.ageFactorPerYear', 'Vehicle age effect on breakdowns', 'Illustrative assumption for how much each year of vehicle age raises the breakdown chance (a multiplier of 1 plus this value times age in years).', 'multiplier', 0, 2, 0.05, ASSUMPTION),
+  meta('reliability.vehicle.repairDaysMin', 'Shortest vehicle repair', 'Illustrative assumption for the fewest days a vehicle is out of service after a breakdown.', 'days', 0, 30, 1, ASSUMPTION),
+  meta('reliability.vehicle.repairDaysMax', 'Longest vehicle repair', 'Illustrative assumption for the most days a vehicle is out of service after a breakdown.', 'days', 0, 60, 1, ASSUMPTION),
+  meta('reliability.vehicle.repairCostMin', 'Lowest vehicle repair cost', 'Illustrative assumption for the smallest repair bill for a vehicle breakdown, in US dollars.', 'usd', 0, 20000, 10, ASSUMPTION),
+  meta('reliability.vehicle.repairCostMax', 'Highest vehicle repair cost', 'Illustrative assumption for the largest repair bill for a vehicle breakdown, in US dollars.', 'usd', 0, 50000, 10, ASSUMPTION),
+
+  // reliability: equipment
+  meta('reliability.equipment.dailyProb', 'Equipment breakdown chance per workday', 'Illustrative assumption for the chance that a new piece of equipment breaks down on a given workday.', 'fraction', 0, 0.05, 0.0005, ASSUMPTION),
+  meta('reliability.equipment.ageFactorPerYear', 'Equipment age effect on breakdowns', 'Illustrative assumption for how much each year of equipment age raises the breakdown chance (a multiplier of 1 plus this value times age in years).', 'multiplier', 0, 2, 0.05, ASSUMPTION),
+  meta('reliability.equipment.repairDaysMin', 'Shortest equipment repair', 'Illustrative assumption for the fewest days a piece of equipment is out of service after a breakdown.', 'days', 0, 30, 1, ASSUMPTION),
+  meta('reliability.equipment.repairDaysMax', 'Longest equipment repair', 'Illustrative assumption for the most days a piece of equipment is out of service after a breakdown.', 'days', 0, 60, 1, ASSUMPTION),
+  meta('reliability.equipment.repairCostMin', 'Lowest equipment repair cost', 'Illustrative assumption for the smallest repair bill for an equipment breakdown, in US dollars.', 'usd', 0, 20000, 10, ASSUMPTION),
+  meta('reliability.equipment.repairCostMax', 'Highest equipment repair cost', 'Illustrative assumption for the largest repair bill for an equipment breakdown, in US dollars.', 'usd', 0, 50000, 10, ASSUMPTION),
+
   // weather
   meta('weather.partialDayFraction', 'Partial-day work window', 'Share of the shift during which weather-sensitive work may still start on a partly rained-out day (illustrative assumption).', 'fraction', 0, 1, 0.05, ASSUMPTION),
 

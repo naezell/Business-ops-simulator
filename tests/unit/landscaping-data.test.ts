@@ -260,6 +260,37 @@ describe('parameter metadata', () => {
   });
 });
 
+describe('reliability parameter metadata', () => {
+  const company = createSampleCompany();
+  const groups = ['vehicle', 'equipment'] as const;
+
+  it('has exactly one entry for every field under reliability.vehicle and reliability.equipment', () => {
+    // 6 numeric fields per group: dailyProb, ageFactorPerYear, repairDaysMin, repairDaysMax, repairCostMin, repairCostMax.
+    const reliabilityPaths = Object.keys(landscapingParamMeta).filter((k) => k.startsWith('reliability.'));
+    expect(reliabilityPaths).toHaveLength(12);
+    for (const group of groups) {
+      const fields = Object.keys(company.reliability[group]);
+      expect(fields, group).toHaveLength(6);
+      for (const field of fields) {
+        const path = `reliability.${group}.${field}`;
+        expect(landscapingParamMeta[path], path).toBeDefined();
+        expect(landscapingParamMeta[path].path, path).toBe(path);
+        expect(typeof valueAt(company, path), path).toBe('number');
+      }
+    }
+  });
+
+  it('every reliability entry is an industry assumption worded as an illustrative assumption', () => {
+    for (const [path, meta] of Object.entries(landscapingParamMeta)) {
+      if (!path.startsWith('reliability.')) continue;
+      expect(meta.provenance, path).toBe('industry-assumption');
+      expect(meta.description.toLowerCase(), path).toContain('illustrative assumption');
+      expect(meta.min, path).toBeLessThanOrEqual(meta.max);
+      expect(meta.step, path).toBeGreaterThan(0);
+    }
+  });
+});
+
 describe('registry', () => {
   it('resolves the default industry and rejects unknown ids', () => {
     expect(defaultIndustryId).toBe('landscaping');
