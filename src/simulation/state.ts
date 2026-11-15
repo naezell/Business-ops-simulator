@@ -19,6 +19,7 @@ import { initialChurnTable, initialOneOffTable, oneOffPrefix, type DrawTable } f
 import { dailyDepreciation, dailyFromMonthly, loanPayment, openingBookValue } from './finance/formulas';
 import { NO_SHOCK, initConditions, type CondState, type ShockMultipliers } from './conditions';
 import { initRules, type RulesState } from './rules';
+import { workforceDynamicsOn } from './dynamics';
 
 export interface EmpS {
   id: Id;
@@ -36,6 +37,12 @@ export interface EmpS {
   absent: boolean;
   /** Forced absent today by an `absence` shock (set by the conditions step). */
   forcedAbsent: boolean;
+  /** Workforce dynamics (simulation-design §3), set daily by the workforce step when enabled. */
+  fatigue: number;
+  /** learn × fatigue factor on productivity (1 when dynamics are off). */
+  prodMult: number;
+  /** Paid hours of the last 28 days, slot = day mod 28 (only when fatigue is enabled). */
+  hist?: Float64Array;
 }
 
 export interface LoanS {
@@ -227,6 +234,8 @@ export interface SimState {
   cond: CondState | null;
   /** Decision rules; null when the scenario has none. */
   rules: RulesState | null;
+  /** Per-employee workforce dynamics enabled (simulation-design §3). */
+  wfDyn: boolean;
 }
 
 export function newCrewStats(id: Id, name: string): CrewStats {
@@ -324,6 +333,8 @@ export function initState(scenario: Scenario, drawCache?: DrawCache | null): Sim
     weekHours: 0,
     absent: false,
     forcedAbsent: false,
+    fatigue: 0,
+    prodMult: 1,
   }));
   const crews: CrewS[] = company.crews.map((c) => ({
     id: c.id,
@@ -402,6 +413,7 @@ export function initState(scenario: Scenario, drawCache?: DrawCache | null): Sim
     churnTable: initialChurnTable(scenario.seed, customerIds, scenario.horizonDays, drawCache),
     cond: initConditions(scenario.shocks),
     rules: initRules(scenario.rules, { activeCustomers: customers.length, activeEmployees: employees.length }),
+    wfDyn: workforceDynamicsOn(company.workforce),
   };
   return st;
 }

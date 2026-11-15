@@ -5,6 +5,7 @@ import type { CustomerS, DayCtx, JobTypeS, OrderS, SimState } from './state';
 import { oneOffKeysFor } from './state';
 import { SCHEDULE_MAX_P } from './schedule';
 import { scaleProbability } from './conditions';
+import { newCustomerChurnFactor, referralLeadRate, saturationFactor, serviceIndex } from './dynamics';
 
 /** Tolerance for visit accrual so that k × (1/k) reaches 1 despite float rounding. */
 export const ACCRUAL_EPS = 1e-9;
@@ -247,6 +248,10 @@ export function demandStep(st: SimState, ctx: DayCtx): void {
     else direct.push({ jt: j, p });
   }
   const demandM = ctx.m.demand;
+  // Referral inputs (simulation-design §4), measured before today's decay and new customers.
+  const activeAtStart = st.activeCustomerCount;
+  let failureSumAtStart = 0;
+  if ((mk.referralsPerCustomerYear ?? 0) !== 0) for (const c of st.customers) if (c.active) failureSumAtStart += c.failure;
   const fresh: OrderS[] = [];
   const custs = st.customers;
   const n0 = st.initialCustomers;
@@ -295,7 +300,15 @@ export function demandStep(st: SimState, ctx: DayCtx): void {
     mk.marketingSpendScale,
     mk.leadSeasonality[m],
   );
-  const lambda = ctx.m.leads === 1 ? lambda0 : lambda0 * ctx.m.leads;
+  let lambdaDyn = lambda0;
+  const refs = mk.referralsPerCustomerYear ?? 0;
+  if (refs !== 0 || mk.marketSize !== undefined) {
+    // simulation-design §4: (λ_base + λ_ref) × saturation, active count and failure scores as of the start of the step.
+    const N = activeAtStart;
+    const lref = refs !== 0 ? referralLeadRate(refs, N, serviceIndex(N > 0 ? failureSumAtStart / N : 0), mk.leadSeasonality[m]) : 0;
+    lambdaDyn = (lambda0 + lref) * saturationFactor(N, mk.marketSize);
+  }
+  const lambda = ctx.m.leads === 1 ? lambdaDyn : lambdaDyn * ctx.m.leads;
   const leads = poissonInverse(lambda, rand01(seed, STREAM.LEADS, 0, day, 0));
   ctx.ops.leads += leads;
   if (leads > 0 && st.company.policies.acceptNewCustomers) {
@@ -364,9 +377,13 @@ export function demandStep(st: SimState, ctx: DayCtx): void {
     // Every hazard is clamped to at most hMax, so a draw >= hMax can never churn: skip the pow() then.
     // The draw is counter-based, so computing it unconditionally changes no other draw.
     const hMax = dailyHazardFromMonthly(0.5);
-    const tryChurn = (c: CustomerS, u: number) => {
+    const boost = mk.newCustomerChurnBoost ?? 0;
+    const tryChurn = (c: CustomerS, u: number, acquired: boolean) => {
       if (u >= hMax) return;
-      const h = c.failure === 0 ? h0 : dailyHazardFromMonthly(clamp(k * (1 + w * c.failure), 0, 0.5));
+      let h: number;
+      if (acquired && boost !== 0)
+        h = dailyHazardFromMonthly(clamp(k * (1 + w * c.failure) * newCustomerChurnFactor(day - c.acquiredDay, boost), 0, 0.5));
+      else h = c.failure === 0 ? h0 : dailyHazardFromMonthly(clamp(k * (1 + w * c.failure), 0, 0.5));
       if (h > 0 && u < h) churnCustomer(st, ctx, c);
     };
     // Day-0 customers in list order from the pre-drawn table (draws < CHURN_SCHEDULE_MAX_U ≥ hMax),
@@ -375,12 +392,12 @@ export function demandStep(st: SimState, ctx: DayCtx): void {
     if (day + 1 < ct.start.length) {
       for (let q = ct.start[day], end = ct.start[day + 1]; q < end; q++) {
         const c = custs[ct.cust[q]];
-        if (c.active) tryChurn(c, ct.us[q]);
+        if (c.active) tryChurn(c, ct.us[q], false);
       }
     }
     for (let ci = n0; ci < custs.length; ci++) {
       const c = custs[ci];
-      if (c.active) tryChurn(c, rand01FromPrefix(churnPrefix(seed, c), day, 0));
+      if (c.active) tryChurn(c, rand01FromPrefix(churnPrefix(seed, c), day, 0), true);
     }
   }
 

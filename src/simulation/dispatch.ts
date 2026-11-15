@@ -2,7 +2,8 @@
 import type { CrewDayLog, RouteStop, UnservedReason, WeatherState } from './types';
 import { STREAM, hashString, rand01 } from './rng';
 import { collectionDelay, isBadDebt } from './finance/formulas';
-import { isDown } from './assets';
+import { assetAgeOnDay, isDown } from './assets';
+import { absenceProbability, agedMaintenanceRate } from './dynamics';
 import { crewRate } from './workforce';
 import type { CrewS, DayCtx, EmpS, EquipS, OrderS, SimState, VehicleS } from './state';
 import { scaleProbability, shockedCollectionDelay } from './conditions';
@@ -117,10 +118,12 @@ export function dispatchDay(st: SimState, ctx: DayCtx, weather: WeatherState, fu
 
   // 1. Absences: one draw per active employee per workday.
   const absenceP = scaleProbability(wf.absenceRate, M.absence);
+  const absDyn = st.wfDyn && (wf.absenceFatigueWeight ?? 0) !== 0;
   for (const e of st.employees) {
     if (!e.active) continue;
     ops.scheduledHours += pol.shiftHours;
-    e.absent = e.forcedAbsent || rand01(st.seed, STREAM.ABSENCE, e.key, day, 0) < absenceP;
+    const p = absDyn ? absenceProbability(wf.absenceRate, e.fatigue, wf.absenceFatigueWeight, M.absence) : absenceP;
+    e.absent = e.forcedAbsent || rand01(st.seed, STREAM.ABSENCE, e.key, day, 0) < p;
     if (e.absent) ops.absentShifts += 1;
   }
 
@@ -227,7 +230,7 @@ export function dispatchDay(st: SimState, ctx: DayCtx, weather: WeatherState, fu
     for (const it of run.kit) usedE.add(it);
     run.n = run.deployed.length;
     run.rate = crewRate(
-      run.deployed.map((e) => ({ productivity: e.productivity, tenureDays: day - e.hireDay })),
+      run.deployed.map((e) => ({ productivity: st.wfDyn ? e.productivity * e.prodMult : e.productivity, tenureDays: day - e.hireDay })),
       wf.rampDays,
       wf.rampStartProductivity,
       wf.crewSizeCoordinationLoss,
@@ -347,6 +350,8 @@ export function dispatchDay(st: SimState, ctx: DayCtx, weather: WeatherState, fu
   const burden = wf.payrollBurdenRate;
   const fuelPrice = M['fuel-price'] === 1 ? costs.fuelPricePerGallon : costs.fuelPricePerGallon * M['fuel-price'];
   const maintM = M['maintenance-cost'];
+  const vAge = co.reliability.vehicle.maintenanceAgeFactorPerYear;
+  const eAge = co.reliability.equipment.maintenanceAgeFactorPerYear;
   for (;;) {
     let r: CrewRun | null = null;
     for (const c of fielded) if (!c.closed && (r === null || c.clock < r.clock)) r = c;
@@ -427,6 +432,7 @@ export function dispatchDay(st: SimState, ctx: DayCtx, weather: WeatherState, fu
   const idlePay = rainout ? pol.rainoutPaidHours : minPaid;
   const pay = (e: EmpS, paid: number, onSite: number, travel: number, cs: CrewS | null) => {
     e.weekHours += paid;
+    if (e.hist) e.hist[day % 28] += paid;
     inc.directLabor += e.wage * paid;
     ops.paidHours += paid;
     ops.onSiteHours += onSite;
@@ -451,7 +457,7 @@ export function dispatchDay(st: SimState, ctx: DayCtx, weather: WeatherState, fu
       ops.milesDriven += r.miles;
       const v = r.vehicle as VehicleS;
       inc.fuel += ((v.mpg > 0 ? r.miles / v.mpg : 0) + r.equipGallons) * fuelPrice;
-      const upkeep = r.miles * v.maintPerMile;
+      const upkeep = r.miles * agedMaintenanceRate(v.maintPerMile, vAge, assetAgeOnDay(v.a, day));
       const vu = maintM === 1 ? upkeep : upkeep * maintM;
       inc.maintenance += vu;
       bookUpkeep(st, v.a, day, vu);
@@ -466,7 +472,7 @@ export function dispatchDay(st: SimState, ctx: DayCtx, weather: WeatherState, fu
   // Equipment hours → maintenance.
   for (const it of st.equipment) {
     if (it.hoursToday > 0) {
-      const upkeep = it.hoursToday * it.maintPerHour;
+      const upkeep = it.hoursToday * agedMaintenanceRate(it.maintPerHour, eAge, assetAgeOnDay(it.a, day));
       const eu = maintM === 1 ? upkeep : upkeep * maintM;
       inc.maintenance += eu;
       bookUpkeep(st, it.a, day, eu);

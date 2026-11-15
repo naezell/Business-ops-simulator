@@ -128,3 +128,24 @@ documentation and dependency updates are yours.
    completion and `hours × rate` on a split.
 8. **Performance (E3).** Sample benchmark median 27.2 ms → 28.2 ms with shocks
    absent (+4%, gate is 10%).
+9. **Rules (E5).** `day` and `month` are today's values (so `month == m` fires on the
+   first day of month m, as IC §3 requires); every other observable is end of previous
+   day. `asset-age-years` is the age on the current day. Entities created by a firing get
+   the tag `rule:{ruleId}[@{entity}]:{firingNumber}:{k}` (k = index in `then`, needed when
+   a rule creates several entities) and the firing's random draws use `hash(tag)` as the
+   draw index. Consequently "a rule-driven run equals the scripted run" holds exactly for
+   actions that create no entities and draw nothing (tested with marketing spend); for
+   hires and purchases the ids, and therefore the entities' draw keys, differ by design.
+10. **Fatigue window (E6).** `n = min(28, day − max(hireDay, 0))` is not a whole number of
+    weeks between days 7 and 27, so h̄ over-weights weekdays transiently (e.g. day 11 of an
+    8-hour Mon–Fri schedule gives h̄ = 45.8). Implemented as written; from day 28 the
+    window is four whole weeks. Tested by hand.
+11. **Referral inputs (E6).** `N_active` and the mean failure score are measured at the
+    start of the demand step (before today's failure decay and acquisitions). The
+    new-customer churn boost applies to customers acquired during the run; day-0
+    customers count as long-tenured even though their `acquiredDay` is 0.
+12. **Workforce dynamics switch (E6).** Per-employee hazards, fatigue tracking and
+    productivity multipliers run only when at least one of `fatigueThresholdHours`,
+    `learningGain`, `wageQuitElasticity` or `earlyTenureQuitBoost` is set; otherwise the
+    original single-hazard path is used (bit-identical). `annualRaiseRate` and
+    `absenceFatigueWeight` act independently of that switch (the latter needs fatigue).
