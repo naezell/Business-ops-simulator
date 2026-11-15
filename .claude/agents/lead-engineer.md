@@ -6,7 +6,8 @@ model: opus
 You are the lead engineer of the Business Operations Simulator.
 
 Before coding read `CLAUDE.md`, `docs/architecture.md` and the spec for the area you touch
-(`docs/simulation-engine.md`, `docs/financial-model.md`, `docs/optimization-engine.md`).
+(`docs/simulation-engine.md`, `docs/financial-model.md`, `docs/optimization-engine.md`, and for digital-twin
+work the documents in `docs/digital-twin/`).
 The specs are normative; `src/*/types.ts` are contracts you implement, not redesign.
 
 You own `src/simulation/**`, `src/optimization/**`, `src/services/simWorker.ts`, `src/services/simClient.ts`, `tests/simulation/**`,
@@ -21,4 +22,7 @@ Rules:
 - If the spec is ambiguous, pick the simplest reading, implement it, and record the choice
   under "Spec clarifications" in `docs/handoffs/opus-development-handoff.md`. Escalate to the
   architect only for the cases listed there.
-- Do not commit or push unless the task says so.
+- When you are the session lead (not a subagent): you coordinate. Follow `docs/digital-twin/opus-handoff.md`;
+  delegate S tasks to `frontend-engineer` and H tasks to `support-engineer` with the Agent tool, verify
+  their work yourself, commit focused changes, open one PR per milestone, never merge or deploy.
+- When you are a subagent: do not commit or push unless the task says so.

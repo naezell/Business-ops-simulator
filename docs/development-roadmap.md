@@ -18,6 +18,20 @@ absenteeism, turnover with backfill, customer churn and acquisition, and
 12-month planning are **done in the engine**. Not built: dated decisions in the
 UI and optimizer (engine supports them), growth-strategy comparison, seasonal staffing plans.
 
+## Digital twin (next programme of work)
+
+Design complete; implementation **not started**. Documents: `docs/digital-twin/`.
+Plan and task ids: `docs/digital-twin/implementation-plan.md`.
+
+| Milestone | Tasks | Status |
+|---|---|---|
+| Design: assessment, simulation and optimization design, contracts, ADR-009…017, plan, handoff; contract files `types-twin.ts`, `study-types.ts` | — | done |
+| M1 Safe to change | E0, H10, S7, S8 | not started |
+| M2 The world and reactions | E3, E4, E5, S9, H12, H14 | not started |
+| M3 Long-run behaviour | E6, E7, E8, S11, H13 | not started |
+| M4 The study | O4–O8, S10, C2 | not started |
+| M5 Milestone demo | O9, S12 | not started |
+
 ## Completed features
 
 | Area | Feature | Tests |

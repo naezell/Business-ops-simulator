@@ -13,3 +13,8 @@ Add a new ADR for any breaking change to a `types.ts` contract or a normative sp
 | 006 | Pre-tax model; taxes out of scope |
 | 007 | Model delegation and file ownership |
 | 008 | One-off job demand responds to price |
+
+ADR-009 to ADR-017 (digital twin) are in [`../digital-twin/architecture-decisions.md`](../digital-twin/architecture-decisions.md):
+daily step and replay branching (009), shocks (010), decision rules (011), workforce feedback (012),
+simulated long-term customer value (013), disposal and owner distributions (014), staged study (015),
+worker pool (016), capacity and loss by experiment (017).

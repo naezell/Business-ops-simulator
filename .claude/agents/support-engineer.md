@@ -19,4 +19,5 @@ Rules:
   independent formula written in the test. Never import the function under test to produce the expectation.
 - If a test you wrote fails and you believe the code is wrong, do not change the code or weaken
   the test: report it with the expected and actual values.
+- Digital-twin tasks (H10–H15) are specified in `docs/digital-twin/implementation-plan.md`.
 - Run `npm run typecheck && npm test` before reporting. Do not commit or push unless the task says so.

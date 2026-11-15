@@ -22,4 +22,6 @@ Rules:
 - Desktop first, usable at 390px width. No gamification, no toasts for routine changes, at most five top-level views.
 - Changing an input must visibly change results within ~300 ms (debounced re-simulation).
 - Run `npm run typecheck && npm run build` before reporting; verify in a real browser when possible.
+- Digital-twin tasks (S7–S12) are specified in `docs/digital-twin/implementation-plan.md` and
+  `implementation-contracts.md` §9. Playback is a reconstruction from logs: never simulate in the UI.
 - Do not commit or push unless the task says so.
