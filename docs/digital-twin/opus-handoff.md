@@ -149,3 +149,12 @@ documentation and dependency updates are yours.
     `learningGain`, `wageQuitElasticity` or `earlyTenureQuitBoost` is set; otherwise the
     original single-hazard path is used (bit-identical). `annualRaiseRate` and
     `absenceFatigueWeight` act independently of that switch (the latter needs fatigue).
+13. **B10 stationarity (H13).** "Year 2 equals year 3 on every flow line" holds exactly
+    only for a setup that repeats every 364 days: 365-day years start on different
+    weekdays, so with a 5-day week (or visit intervals that do not divide 7) travel and
+    miles differ slightly between years, and with variable daily wages the 14-day pay
+    cycle pays a different 364-day window. The benchmark uses 7 workdays, a 5-day visit
+    interval and a guaranteed full shift; the measured differences of the other setups
+    are recorded in `tests/fixtures/benchmarks.ts`.
+14. **B7 hand value (H13).** "30 days of loaded pay" means the paid workdays in days
+    0–29 (22 on a Mon–Fri week), i.e. 22 × 8 h × wage × (1 + burden).
