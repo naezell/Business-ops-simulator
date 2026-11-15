@@ -7,7 +7,7 @@ Status of each task is tracked in `docs/development-roadmap.md`.
 
 - Files you own: `src/components/**`, `src/pages/**`, `src/App.tsx`, `src/main.tsx`,
   `src/index.css`, `src/services/store.ts`, `src/services/persistence.ts`, `src/services/format.ts`.
-- You consume, never edit: `src/simulation`, `src/optimization`, `src/business`, `src/services/simClient.ts`, `src/services/simWorker.ts`.
+- You consume, never edit: `src/simulation`, `src/optimization`, `src/business`, `src/services/simClient.ts`, `src/services/studyWorker*.ts`, `src/services/studyPool.ts`.
 - No business arithmetic in the UI beyond differences and percentages of engine outputs.
 - Testing: `npm run typecheck && npm run build` pass; open the app in a browser
   (Playwright + Chromium are preinstalled) at 1440×900 and 390×844, exercise the

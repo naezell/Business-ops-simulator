@@ -202,3 +202,9 @@ documentation and dependency updates are yours.
     included) can exceed it; the UI labels them separately. `tests/fixtures/study-result.json`
     stays the earlier recording (uncalibrated demo, old hash) — it is a UI test input, not a
     statement about the demo.
+22. **O9 "retire or wrap `optimize()`".** Retired from the app: `simWorker.ts`, `runOptimization`
+    and the store's `opt` state are removed; the Optimize view runs only `runStudyInPool`.
+    `optimize()` stays exported from `src/optimization` with its known-answer tests, as a
+    library function (the study does not call it). Browser performance (Playwright, production
+    build, chromium, 4 cores, `twin-90`, default request): first ranked strategies 2.4 s,
+    complete 4.9 s, no console errors (gates 8 s and 45 s).

@@ -10,8 +10,8 @@ import type { Action, CompanyConfig, PlannedAction, Scenario, Shock, SimulationR
 import { defaultIndustryId, getIndustry } from '@/business/registry';
 import type { IndustryDefinition } from '@/business/types';
 import { applyPatch, chipKey, type CompanyPatch } from './derive';
-import type { Objective, OptimizationProgress, OptimizationResult, StrategyEvaluation, StudyProgress, StudyResult } from '@/optimization';
-import { catalogFromIndustry, runOptimization, runStudyInPool, type OptimizationHandle, type StudyHandle } from './simClient';
+import type { Objective, StrategyEvaluation, StudyProgress, StudyResult } from '@/optimization';
+import { catalogFromIndustry, runStudyInPool, type StudyHandle } from './simClient';
 import { adoptPayload, mergeRules } from './studyAdopt';
 import { STORAGE_VERSION, clearPersisted, loadPersisted, savePersisted, type DraftPlan, type PersistedState, type ViewId } from './persistence';
 import { clampDay } from './planTimeline';
@@ -118,20 +118,6 @@ function buildScenarios(industry: IndustryDefinition, core: Core): { baseline: S
   return { baseline, draft, company };
 }
 
-/** Optimizer state. Lives in memory only (never persisted). */
-export interface OptState {
-  status: 'idle' | 'running' | 'error';
-  /** Objective of the run in progress or the last run requested. */
-  objective: Objective;
-  progress: OptimizationProgress | null;
-  result: OptimizationResult | null;
-  /** Fingerprint of the scenario the result was computed for; compare with scenarioKey(state). */
-  resultKey: string | null;
-  /** Candidate ids the user applied from the current result. */
-  appliedIds: string[];
-  error: string | null;
-}
-
 /** Study state (optimizer v2). Lives in memory only. `result` is partial while running or after a cancel. */
 export interface StudyState {
   status: 'idle' | 'running' | 'error';
@@ -168,7 +154,6 @@ export interface AppState extends Core {
   pending: boolean;
   selectedDay: number;
   view: ViewId;
-  opt: OptState;
   study: StudyState;
 
   setView: (v: ViewId) => void;
@@ -190,8 +175,6 @@ export interface AppState extends Core {
   removeDraftByKey: (key: string) => void;
   /** Appends several planned actions through the same de-duplication as chips. Used by the optimizer. */
   applyPlannedActions: (actions: PlannedAction[], candidateId?: string) => void;
-  startOptimization: (objective: Objective) => void;
-  cancelOptimization: () => void;
   startStudy: (objective: Objective) => void;
   cancelStudy: () => void;
   /** Applies a strategy's dated actions and rules to the draft (rules de-duplicated by id). */
@@ -275,7 +258,6 @@ function initial(): Built & { selectedDay: number; view: ViewId } {
 let timer: ReturnType<typeof setTimeout> | null = null;
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 let lastBaselineKey = '';
-let optHandle: OptimizationHandle | null = null;
 let studyHandle: StudyHandle | null = null;
 
 const baselineKeyOf = (c: Core) => JSON.stringify([c.industryId, c.demoScenarioId, c.seed, c.horizonMonths, c.patch, c.shocks, c.baselineActions]);
@@ -380,7 +362,6 @@ export const useStore = create<AppState>()((set, get) => {
     pending: false,
     selectedDay: Math.min(init.selectedDay, init.baselineResult.horizonDays - 1),
     view: init.view,
-    opt: { status: 'idle', objective: 'net-profit', progress: null, result: null, resultKey: null, appliedIds: [], error: null },
     study: { status: 'idle', objective: 'net-profit', progress: null, result: null, partial: false, resultKey: null, appliedIds: [], error: null },
 
     setView: (view) => set({ view }),
@@ -424,59 +405,7 @@ export const useStore = create<AppState>()((set, get) => {
         if (at >= 0) list[at] = { day, action: pa.action };
         else list.push({ day, action: pa.action });
       }
-      const opt = s0.opt;
-      commit({ draft: { ...s0.draft, actions: list } }, candidateId ? { opt: { ...opt, appliedIds: [...opt.appliedIds, candidateId] } } : {});
-    },
-    startOptimization: (objective) => {
-      const s = get();
-      if (s.opt.status === 'running') return;
-      const core: Core = {
-        industryId: s.industryId,
-        seed: s.seed,
-        horizonMonths: s.horizonMonths,
-        baselineActions: s.baselineActions,
-        draft: s.draft,
-        patch: s.patch,
-        shocks: s.shocks,
-        demoScenarioId: s.demoScenarioId,
-      };
-      const key = scenarioKey(core);
-      // The optimizer improves the current draft: baseline plus pending decisions is the scenario it starts from.
-      const { draft } = buildScenarios(s.industry, core);
-      let handle: OptimizationHandle;
-      let lastPush = 0;
-      try {
-        handle = runOptimization({ scenario: draft, catalog: catalogFromIndustry(s.industry), objective }, (p) => {
-          const now = Date.now();
-          const cur = get().opt.progress;
-          if (cur && cur.phase === p.phase && now - lastPush < 100) return;
-          lastPush = now;
-          set({ opt: { ...get().opt, progress: p } });
-        });
-      } catch (e) {
-        set({ opt: { ...s.opt, status: 'error', error: e instanceof Error ? e.message : String(e) } });
-        return;
-      }
-      optHandle = handle;
-      set({ opt: { ...s.opt, status: 'running', objective, progress: { phase: 'baseline', completed: 0, total: 1 }, error: null } });
-      handle.promise.then(
-        (result) => {
-          if (optHandle !== handle) return;
-          optHandle = null;
-          set({ opt: { status: 'idle', objective, progress: null, result, resultKey: key, appliedIds: [], error: null } });
-        },
-        (err: Error) => {
-          if (optHandle !== handle) return;
-          optHandle = null;
-          const cancelled = err.name === 'AbortError';
-          set({ opt: { ...get().opt, status: cancelled ? 'idle' : 'error', progress: null, error: cancelled ? null : err.message } });
-        },
-      );
-    },
-    cancelOptimization: () => {
-      const h = optHandle;
-      if (!h) return;
-      h.cancel();
+      commit({ draft: { ...s0.draft, actions: list } }, candidateId ? { study: { ...s0.study, appliedIds: [...s0.study.appliedIds, candidateId] } } : {});
     },
     startStudy: (objective) => {
       const s = get();
