@@ -13,7 +13,7 @@ import type {
   SimEvent,
   VehicleSpec,
 } from './types';
-import { hashString } from './rng';
+import { STREAM, hashString, randPrefix } from './rng';
 import { dailyDepreciation, dailyFromMonthly, loanPayment, openingBookValue } from './finance/formulas';
 
 export interface EmpS {
@@ -99,8 +99,11 @@ export interface CustomerS {
   key: number;
   acquiredDay: number;
   churnedDay: number | null;
-  /** randPrefix(seed, ONEOFF_DEMAND, hash(customerId + ':' + jobTypeId)) per job type index (lazily filled). */
-  oneOffKeys: number[];
+  /**
+   * randPrefix(seed, ONEOFF_DEMAND, hash(customerId + ':' + jobTypeId)) per job type index, filled at
+   * creation for every one-off job type (0 for recurring types, never read). Packed for the demand hot loop.
+   */
+  oneOffKeys: Int32Array;
   /** randPrefix(seed, CHURN, key) (lazily filled; NaN = not yet computed). */
   churnPrefix: number;
 }
@@ -255,6 +258,15 @@ export function openingAsset(id: Id, f: FinanceLike): AssetS {
   return a;
 }
 
+/** Per-job-type one-off draw prefixes of a customer (see CustomerS.oneOffKeys). */
+export function oneOffKeysFor(seed: number, customerId: Id, jobTypes: JobTypeS[]): Int32Array {
+  const out = new Int32Array(jobTypes.length);
+  for (const jt of jobTypes) {
+    if (jt.def.kind === 'one-off') out[jt.idx] = randPrefix(seed, STREAM.ONEOFF_DEMAND, hashString(customerId + ':' + jt.def.id));
+  }
+  return out;
+}
+
 export function initState(scenario: Scenario): SimState {
   const company = structuredClone(scenario.company);
   const jobTypes: JobTypeS[] = company.jobTypes.map((def, idx) => ({ def, idx, stats: newJobTypeStats(def.id) }));
@@ -306,7 +318,7 @@ export function initState(scenario: Scenario): SimState {
     key: hashString(c.id),
     acquiredDay: 0,
     churnedDay: null,
-    oneOffKeys: [],
+    oneOffKeys: oneOffKeysFor(scenario.seed, c.id, jobTypes),
     churnPrefix: NaN,
   }));
   let nfa = 0;
