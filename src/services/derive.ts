@@ -295,6 +295,7 @@ const POLICY_LABEL: Record<keyof Policies, string> = {
   routing: 'Routing',
   autoBackfill: 'Auto-backfill vacancies',
   acceptNewCustomers: 'Accept new customers',
+  floatIdleWorkers: 'Float idle workers between crews',
 };
 export const ROUTING_LABEL: Record<Policies['routing'], string> = {
   fifo: 'First in, first out',
@@ -363,6 +364,16 @@ export function describeAction(action: Action, ctx: LabelContext): string {
       return `Marketing ${money(ctx.base.marketingSpend)} → ${money(action.monthlySpend)}/mo`;
     case 'set-job-type-offered':
       return action.offered ? `Offer ${jtName(action.jobTypeId)}` : `Stop offering ${jtName(action.jobTypeId)}`;
+    case 'dispose-asset':
+      return `Sell or scrap ${action.assetId}`;
+    case 'replace-asset':
+      return `Replace ${action.assetId} with ${action.spec.name} (${METHOD_SHORT[action.method]})`;
+    case 'move-employee':
+      return `Move ${action.employeeId} to ${crewName(action.crewId)}`;
+    case 'set-wage':
+      return `${action.employeeId === 'all' ? 'All wages' : `Wage of ${action.employeeId}`} ${signedPct(action.multiplier)}`;
+    case 'drop-customers':
+      return `Stop serving ${action.customerIds.length} customer${action.customerIds.length === 1 ? '' : 's'}`;
   }
 }
 

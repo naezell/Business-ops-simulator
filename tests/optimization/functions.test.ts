@@ -23,6 +23,7 @@ import { truck } from './scenarios';
 
 function income(over: Partial<IncomeStatement> = {}): IncomeStatement {
   return {
+    gainOnDisposal: 0,
     revenue: 0,
     directLabor: 0,
     payrollBurden: 0,

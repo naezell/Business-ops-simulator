@@ -110,3 +110,21 @@ documentation and dependency updates are yours.
    constants spread into the company; its `ParamMeta` (`demoTwinParamMeta`) is kept
    separate from `landscapingParamMeta` because those paths do not exist on the
    sample company. H14 merges it.
+5. **Shock monotonicity, "present in both runs" (E3).** Read as "eligible for the
+   event in both runs that day": an active employee for quits and absences, an asset that
+   is not already down for breakdowns. A breakdown makes an asset unavailable for days,
+   so over a multi-day window a shocked run can skip a later base-run breakdown; the
+   property is therefore tested on single-day windows for breakdowns and turnover, and
+   over the whole horizon for absences (which have no upstream state).
+6. **Shock edges and ids (E3).** `shock-started` is emitted on `fromDay`, `shock-ended`
+   on `toDay` (when inside the horizon), ended before started on the same day. Outage
+   and absence shocks must name assets/employees in the company config (validated);
+   overlapping weather shocks: the last in array order wins. A `materials-cost` shock
+   scales the materials booked on the day an order is first worked.
+7. **Output fields computed at wiring time (E3).** `scheduledHours`,
+   `completedLaborHours`, `quits` and `years` are required fields, so E3 computes them
+   rather than leaving zeros for E8. `scheduledHours` counts active employees ×
+   `shiftHours` on workdays before absence; `completedLaborHours` adds `o.remaining` on
+   completion and `hours × rate` on a split.
+8. **Performance (E3).** Sample benchmark median 27.2 ms → 28.2 ms with shocks
+   absent (+4%, gate is 10%).

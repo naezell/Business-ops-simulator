@@ -2,6 +2,7 @@
 import type { Id } from './types';
 import { STREAM, hashString, rand01 } from './rng';
 import type { DayCtx, EmpS, SimState } from './state';
+import { scaleProbability } from './conditions';
 
 /** ramp = min(1, start + (1 − start) × tenure / rampDays); 1 when rampDays ≤ 0. */
 export function rampFactor(tenureDays: number, rampDays: number, rampStartProductivity: number): number {
@@ -54,6 +55,7 @@ export function hireEmployee(st: SimState, ctx: DayCtx, h: HireInput): EmpS {
     key: hashString(h.id),
     weekHours: 0,
     absent: false,
+    forcedAbsent: false,
   };
   st.employees.push(e);
   ctx.inc.hiringCosts += st.company.workforce.hiringCostPerHire;
@@ -85,7 +87,7 @@ export function workforceStep(st: SimState, ctx: DayCtx): void {
     st.reqs = keep;
   }
   // Quits.
-  const h = dailyHazardFromAnnual(wf.annualTurnoverRate);
+  const h = scaleProbability(dailyHazardFromAnnual(wf.annualTurnoverRate), ctx.m.turnover);
   if (h <= 0) return;
   const n = st.employees.length;
   for (let i = 0; i < n; i++) {
@@ -93,6 +95,7 @@ export function workforceStep(st: SimState, ctx: DayCtx): void {
     if (!e.active) continue;
     if (rand01(st.seed, STREAM.QUIT, e.key, day, 0) < h) {
       e.active = false;
+      ctx.ops.quits += 1;
       st.events.push({ day, type: 'employee-quit', employeeId: e.id });
       if (st.company.policies.autoBackfill) {
         const k = (st.backfillCount.get(e.id) ?? 0) + 1;

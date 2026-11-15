@@ -4,6 +4,7 @@
  * reasons and generated ids (`h-d{day}-{index}-{k}`, `crew-d{day}-{index}`,
  * `a-d{day}-{index}-{k}`) are exactly the engine's.
  */
+import { NO_SHOCK } from './conditions';
 import type { AssetFinance, CompanyConfig, EquipmentItem, Employee, Financing, PlannedAction, Vehicle } from './types';
 import { applyAction } from './actions';
 import { zeroCashFlow, zeroIncome, zeroOps } from './finance/statements';
@@ -77,6 +78,7 @@ export function applyActionsAtDayZero(company: CompanyConfig, actions: PlannedAc
       ops: zeroOps(),
       assetAdditions: 0,
       newBorrowing: 0,
+      m: NO_SHOCK,
     };
     const reason = applyAction(st, ctx, structuredClone(pa.action), index);
     if (reason !== null) rejected.push({ index, action: pa, reason });

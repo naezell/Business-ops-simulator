@@ -30,9 +30,16 @@ export function laneOf(action: Action): LaneId {
     case 'set-price':
     case 'set-marketing-spend':
     case 'set-job-type-offered':
+    case 'drop-customers':
       return 'pricing';
     case 'set-policy':
       return 'policies';
+    case 'move-employee':
+    case 'set-wage':
+      return 'people';
+    case 'dispose-asset':
+    case 'replace-asset':
+      return 'equipment';
   }
 }
 

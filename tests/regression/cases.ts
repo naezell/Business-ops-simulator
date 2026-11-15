@@ -24,8 +24,17 @@ import {
 } from '../fixtures/scenarios';
 import { allActions, financedAndLeased, tinyDeterministic } from '../simulation/scenarios';
 
-/** Result keys added after the golden master was first recorded (none yet). */
-export const LATER_FIELDS: ReadonlySet<string> = new Set<string>([]);
+/** Result keys added after the golden master was first recorded. */
+export const LATER_FIELDS: ReadonlySet<string> = new Set<string>([
+  // E3 wiring (implementation-contracts §2): new required result fields.
+  'gainOnDisposal',
+  'assetSaleProceeds',
+  'ownerDistributions',
+  'scheduledHours',
+  'completedLaborHours',
+  'quits',
+  'years',
+]);
 
 export const SEEDS = [1, 2, 3] as const;
 export const HORIZONS = [30, 365] as const;

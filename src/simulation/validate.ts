@@ -1,5 +1,6 @@
 /** Scenario validation (simulation-engine §11). */
 import type { AssetFinance, CompanyConfig, Scenario, ValidateScenario, ValidationIssue } from './types';
+import { SHOCK_TARGETS } from './conditions';
 
 /** Numeric leaves allowed to be negative (positions and elasticities). */
 const NEGATIVE_OK = /(^|\.)(x|y)$|Elasticity$/;
@@ -140,6 +141,42 @@ function companyIssues(c: CompanyConfig, out: ValidationIssue[]): void {
   if (c.employees.length === 0) out.push({ severity: 'warning', path: 'company.employees', message: 'company has no employees' });
 }
 
+const SHOCK_TARGET_SET = new Set<string>(SHOCK_TARGETS);
+const WEATHER_STATES = new Set(['clear', 'partial', 'rainout']);
+
+/** Shocks (simulation-design §2, IC §3 F): windows, factors, targets and referenced ids. */
+function shockIssues(scenario: Scenario, out: ValidationIssue[]): void {
+  const shocks = scenario.shocks;
+  if (!shocks) return;
+  const c = scenario.company;
+  const assets = new Set([...c.vehicles.map((v) => v.id), ...c.equipment.map((e) => e.id)]);
+  const employees = new Set(c.employees.map((e) => e.id));
+  shocks.forEach((s, i) => {
+    const p = `shocks[${i}]`;
+    if (!Number.isInteger(s.fromDay) || s.fromDay < 0) out.push({ severity: 'error', path: `${p}.fromDay`, message: 'must be an integer >= 0' });
+    if (!Number.isInteger(s.toDay) || !(s.toDay > s.fromDay)) out.push({ severity: 'error', path: `${p}.toDay`, message: 'must be an integer > fromDay' });
+    switch (s.type) {
+      case 'multiplier':
+        if (!SHOCK_TARGET_SET.has(s.target)) out.push({ severity: 'error', path: `${p}.target`, message: `unknown shock target ${s.target}` });
+        if (!Number.isFinite(s.factor) || s.factor < 0) out.push({ severity: 'error', path: `${p}.factor`, message: 'must be a finite number >= 0' });
+        break;
+      case 'outage':
+        if (!assets.has(s.assetId)) out.push({ severity: 'error', path: `${p}.assetId`, message: `unknown asset ${s.assetId}` });
+        break;
+      case 'absence':
+        s.employeeIds.forEach((id, k) => {
+          if (!employees.has(id)) out.push({ severity: 'error', path: `${p}.employeeIds[${k}]`, message: `unknown employee ${id}` });
+        });
+        break;
+      case 'weather':
+        if (!WEATHER_STATES.has(s.state)) out.push({ severity: 'error', path: `${p}.state`, message: `unknown weather state ${s.state}` });
+        break;
+      default:
+        out.push({ severity: 'error', path: `${p}.type`, message: 'unknown shock type' });
+    }
+  });
+}
+
 export const validateScenario: ValidateScenario = (scenario: Scenario) => {
   const out: ValidationIssue[] = [];
   if (!Number.isInteger(scenario.horizonDays) || scenario.horizonDays < 1)
@@ -149,5 +186,6 @@ export const validateScenario: ValidateScenario = (scenario: Scenario) => {
     if (!Number.isInteger(a.day) || a.day < 0) out.push({ severity: 'error', path: `actions[${i}].day`, message: 'must be an integer >= 0' });
   });
   companyIssues(scenario.company, out);
+  shockIssues(scenario, out);
   return out;
 };

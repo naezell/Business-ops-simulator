@@ -17,6 +17,7 @@ import type {
 import { hashString } from './rng';
 import { initialChurnTable, initialOneOffTable, oneOffPrefix, type DrawTable } from './schedule';
 import { dailyDepreciation, dailyFromMonthly, loanPayment, openingBookValue } from './finance/formulas';
+import { NO_SHOCK, initConditions, type CondState, type ShockMultipliers } from './conditions';
 
 export interface EmpS {
   id: Id;
@@ -32,6 +33,8 @@ export interface EmpS {
   /** Paid hours in the current overtime week. */
   weekHours: number;
   absent: boolean;
+  /** Forced absent today by an `absence` shock (set by the conditions step). */
+  forcedAbsent: boolean;
 }
 
 export interface LoanS {
@@ -57,6 +60,8 @@ export interface AssetS {
   /** Unavailable while day < downUntil. */
   downUntil: number;
   loan: LoanS | null;
+  /** Unavailable today because of an `outage` shock (set by the conditions step). */
+  out: boolean;
 }
 
 export interface VehicleS {
@@ -137,6 +142,8 @@ export interface OrderS {
   sector: number;
   /** Cached travel time back to the depot; −1 until computed. */
   tBack: number;
+  /** Road factor tBack was computed with (a travel-time shock changes it). */
+  tBackRf: number;
 }
 
 export interface InvoiceS {
@@ -172,7 +179,12 @@ export interface DayCtx {
   ops: OpsMetrics;
   assetAdditions: number;
   newBorrowing: number;
+  /** Today's shock multipliers (NO_SHOCK on unshocked days). */
+  m: Readonly<ShockMultipliers>;
 }
+
+/** All-ones multipliers for contexts built outside the daily loop. */
+export const NO_SHOCK_CTX = NO_SHOCK;
 
 export interface SimState {
   seed: number;
@@ -204,6 +216,8 @@ export interface SimState {
   oneOffTable: DrawTable;
   /** Day-0 customers' churn draws below CHURN_SCHEDULE_MAX_U, by day (schedule.ts). */
   churnTable: DrawTable;
+  /** Shock state; null when the scenario has no shocks. */
+  cond: CondState | null;
 }
 
 export function newCrewStats(id: Id, name: string): CrewStats {
@@ -260,6 +274,7 @@ export function openingAsset(id: Id, f: FinanceLike): AssetS {
     dailyDep: leased ? 0 : dailyDepreciation(f.purchasePrice, f.salvageValue, f.usefulLifeYears),
     downUntil: 0,
     loan: null,
+    out: false,
   };
   if (f.financing.kind === 'loan') {
     const L = f.financing;
@@ -299,6 +314,7 @@ export function initState(scenario: Scenario, drawCache?: DrawCache | null): Sim
     key: hashString(e.id),
     weekHours: 0,
     absent: false,
+    forcedAbsent: false,
   }));
   const crews: CrewS[] = company.crews.map((c) => ({
     id: c.id,
@@ -375,6 +391,7 @@ export function initState(scenario: Scenario, drawCache?: DrawCache | null): Sim
       drawCache,
     ),
     churnTable: initialChurnTable(scenario.seed, customerIds, scenario.horizonDays, drawCache),
+    cond: initConditions(scenario.shocks),
   };
   return st;
 }

@@ -45,6 +45,7 @@ import { dispatchDay } from './dispatch';
 import { workforceStep } from './workforce';
 import { allAssets, initState, type DayCtx, type SimState } from './state';
 import { validateScenario } from './validate';
+import { coveredBy, forcedWeather, multipliersForDay, shockEventsForDay } from './conditions';
 
 /** Weather from one draw: u < rainout ⇒ rainout; u < rainout + partial ⇒ partial; else clear. */
 export function weatherFromDraw(u: number, rainoutProb: number, partialProb: number): WeatherState {
@@ -208,17 +209,27 @@ export const runSimulation: RunSimulation = (scenario: Scenario, options?: Simul
       ops: zeroOps(),
       assetAdditions: 0,
       newBorrowing: 0,
+      m: multipliersForDay(st.cond, day),
     };
+    // 0. Conditions (simulation-design §1–§2).
+    const cond = st.cond;
+    if (cond) {
+      for (const e of shockEventsForDay(cond, day)) st.events.push({ day, ...e });
+      if (cond.outages.size > 0) for (const a of allAssets(st)) a.out = coveredBy(cond.outages.get(a.id), day);
+      if (cond.absences.size > 0) for (const e of st.employees) e.forcedAbsent = coveredBy(cond.absences.get(e.id), day);
+    }
     // 1. Actions.
     const todays = actionsByDay.get(day);
     if (todays) applyActionsForDay(st, ctx, todays);
     const co = st.company;
     // 2. Weather.
-    const w = weatherFromDraw(
-      rand01(st.seed, STREAM.WEATHER, 0, day, 0),
-      co.weather.rainoutProbByMonth[info.month],
-      co.weather.partialProbByMonth[info.month],
-    );
+    const w =
+      forcedWeather(cond, day) ??
+      weatherFromDraw(
+        rand01(st.seed, STREAM.WEATHER, 0, day, 0),
+        co.weather.rainoutProbByMonth[info.month],
+        co.weather.partialProbByMonth[info.month],
+      );
     const workday = isWorkday(day, co.policies.workDaysPerWeek);
     // 3. Workforce.
     workforceStep(st, ctx);
@@ -288,6 +299,9 @@ export const runSimulation: RunSimulation = (scenario: Scenario, options?: Simul
     }
   }
   const totals = summarize(days, 0, -1);
+  // One summary per 365-day block from day 0; the last may be partial (types-twin §5).
+  const years: PeriodSummary[] = [];
+  for (let y = 0; y * 365 < H; y++) years.push(summarize(days.slice(y * 365, Math.min(H, (y + 1) * 365)), y, -1));
 
   const jobTypeStats: Record<Id, JobTypeStats> = {};
   for (const jt of st.jobTypes) {
@@ -309,6 +323,7 @@ export const runSimulation: RunSimulation = (scenario: Scenario, options?: Simul
     crewStats,
     events: st.events,
     warnings,
+    years,
   };
   if (full) {
     result.crewLogs = crewLogs;

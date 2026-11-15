@@ -4,6 +4,7 @@ import { STREAM, hashString, rand01, uniformInt, uniformRange } from './rng';
 import { acquisitionFlows, dailyDepreciation, depreciationForDay, loanMonthStep, loanPayment } from './finance/formulas';
 import type { AssetS, DayCtx, SimState } from './state';
 import type { BreakdownParams } from './types';
+import { scaleProbability } from './conditions';
 
 /** min(1, dailyProb × (1 + ageFactor × ageYears)), never negative. */
 export function breakdownProbability(dailyProb: number, ageFactorPerYear: number, ageYears: number): number {
@@ -14,18 +15,28 @@ export function assetAgeOnDay(a: AssetS, day: number): number {
   return a.ageYears + (day - a.acquiredDay) / 365;
 }
 
+/** Unavailable: under repair, or out of service because of an outage shock today. */
 export function isDown(a: AssetS, day: number): boolean {
-  return day < a.downUntil;
+  return day < a.downUntil || a.out;
 }
 
-function maybeBreak(st: SimState, ctx: DayCtx, a: AssetS, p: BreakdownParams, stream: number): { downDays: number; cost: number } | null {
+function maybeBreak(
+  st: SimState,
+  ctx: DayCtx,
+  a: AssetS,
+  p: BreakdownParams,
+  stream: number,
+  probM: number,
+): { downDays: number; cost: number } | null {
   const day = ctx.day;
   if (isDown(a, day)) return null;
-  const prob = breakdownProbability(p.dailyProb, p.ageFactorPerYear, assetAgeOnDay(a, day));
+  const prob = scaleProbability(breakdownProbability(p.dailyProb, p.ageFactorPerYear, assetAgeOnDay(a, day)), probM);
   if (!(prob > 0)) return null;
   if (!(rand01(st.seed, stream, a.key, day, 0) < prob)) return null;
   const downDays = uniformInt(p.repairDaysMin, p.repairDaysMax, rand01(st.seed, STREAM.REPAIR, a.key, day, 0));
-  const cost = uniformRange(p.repairCostMin, p.repairCostMax, rand01(st.seed, STREAM.REPAIR, a.key, day, 1));
+  const base = uniformRange(p.repairCostMin, p.repairCostMax, rand01(st.seed, STREAM.REPAIR, a.key, day, 1));
+  const rm = ctx.m['repair-cost'];
+  const cost = rm === 1 ? base : base * rm;
   a.downUntil = day + downDays;
   ctx.inc.maintenance += cost;
   return { downDays, cost };
@@ -35,11 +46,11 @@ function maybeBreak(st: SimState, ctx: DayCtx, a: AssetS, p: BreakdownParams, st
 export function assetStep(st: SimState, ctx: DayCtx): void {
   const rel = st.company.reliability;
   for (const v of st.vehicles) {
-    const r = maybeBreak(st, ctx, v.a, rel.vehicle, STREAM.VEHICLE_BREAKDOWN);
+    const r = maybeBreak(st, ctx, v.a, rel.vehicle, STREAM.VEHICLE_BREAKDOWN, ctx.m['vehicle-breakdown']);
     if (r) st.events.push({ day: ctx.day, type: 'vehicle-breakdown', vehicleId: v.id, ...r });
   }
   for (const e of st.equipment) {
-    const r = maybeBreak(st, ctx, e.a, rel.equipment, STREAM.EQUIPMENT_BREAKDOWN);
+    const r = maybeBreak(st, ctx, e.a, rel.equipment, STREAM.EQUIPMENT_BREAKDOWN, ctx.m['equipment-breakdown']);
     if (r) st.events.push({ day: ctx.day, type: 'equipment-breakdown', equipmentId: e.id, ...r });
   }
 }
@@ -72,6 +83,7 @@ export function acquireAsset(st: SimState, ctx: DayCtx, id: Id, spec: AcquireSpe
     dailyDep: leased ? 0 : dailyDepreciation(spec.purchasePrice, spec.salvageValue, spec.usefulLifeYears),
     downUntil: 0,
     loan: null,
+    out: false,
   };
   if (method === 'loan') {
     a.loan = {
