@@ -24,7 +24,7 @@ function oneOffOrderIds(company: CompanyConfig, seed: number, horizon: number): 
   const cal = buildCalendar(st.company.startMonth, horizon);
   const ids = new Set<string>();
   for (let day = 0; day < horizon; day++) {
-    const ctx: DayCtx = { day, month: cal[day].month, inc: zeroIncome(), cf: zeroCashFlow(), ops: zeroOps(), assetAdditions: 0, newBorrowing: 0, m: NO_SHOCK };
+    const ctx: DayCtx = { day, month: cal[day].month, inc: zeroIncome(), cf: zeroCashFlow(), ops: zeroOps(), assetAdditions: 0, newBorrowing: 0, disposedBook: 0, m: NO_SHOCK };
     demandStep(st, ctx);
     for (const o of st.open) if (ONE_OFF.has(o.jt.def.id)) ids.add(o.id);
     st.open.length = 0;

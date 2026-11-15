@@ -24,6 +24,7 @@ import {
   isOvertimeSettlementDay,
   isPayday,
   locStep,
+  ownerDistribution,
   payrollBurden,
   weeklyOvertime,
 } from './finance/formulas';
@@ -108,8 +109,19 @@ function financeStep(st: SimState, ctx: DayCtx, firstOfMonth: boolean): { shortf
   cf.operatingCashOut = computeOperatingCashOut(inc);
 
   // Line of credit, after all other cash movements.
-  const cashBefore =
+  let cashBefore =
     b.cash + cf.collections - cf.payrollPaid - cf.operatingCashOut - cf.interestPaid - cf.capex + cf.loanProceeds - cf.principalPaid;
+  if (cf.assetSaleProceeds !== 0) cashBefore += cf.assetSaleProceeds;
+  // Owner distribution (simulation-design §6): first of month, day > 0, after loans, before the line of credit.
+  const X = fin.ownerDistributionCashAbove;
+  if (X !== undefined && firstOfMonth && day > 0) {
+    const D = ownerDistribution(cashBefore, X, b.loc);
+    if (D > 0) {
+      cf.ownerDistributions = D;
+      cashBefore -= D;
+      st.events.push({ day, type: 'owner-distribution', amount: D });
+    }
+  }
   const loc = locStep(cashBefore, b.loc, fin.lineOfCredit.limit, fin.lineOfCredit.annualRate);
   inc.interest += loc.interest;
   cf.interestPaid += loc.interest;
@@ -121,7 +133,7 @@ function financeStep(st: SimState, ctx: DayCtx, firstOfMonth: boolean): { shortf
 
   b.cash += cf.netCashFlow;
   b.ar += inc.revenue - cf.collections - inc.badDebt;
-  b.nfa += ctx.assetAdditions - inc.depreciation;
+  b.nfa += ctx.disposedBook === 0 ? ctx.assetAdditions - inc.depreciation : ctx.assetAdditions - inc.depreciation - ctx.disposedBook;
   b.loanBalance += ctx.newBorrowing - cf.principalPaid;
   b.loc += cf.locDraw - cf.locRepay;
   const shortfall = b.cash < 0;
@@ -209,6 +221,7 @@ export const runSimulation: RunSimulation = (scenario: Scenario, options?: Simul
       ops: zeroOps(),
       assetAdditions: 0,
       newBorrowing: 0,
+      disposedBook: 0,
       m: multipliersForDay(st.cond, day),
     };
     // 0. Conditions (simulation-design §1–§2).

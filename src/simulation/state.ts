@@ -179,6 +179,8 @@ export interface DayCtx {
   ops: OpsMetrics;
   assetAdditions: number;
   newBorrowing: number;
+  /** Book value of assets disposed of today (leaves net fixed assets, simulation-design §6). */
+  disposedBook: number;
   /** Today's shock multipliers (NO_SHOCK on unshocked days). */
   m: Readonly<ShockMultipliers>;
 }

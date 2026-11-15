@@ -1,10 +1,10 @@
 /** Actions (simulation-engine §10). Applied at the start of their day, in array order. */
 import type { Action, EquipmentSpec, Id, NewHireSpec, PlannedAction, Policies, VehicleSpec, AcquisitionMethod } from './types';
 import { STREAM, rand01 } from './rng';
-import { acquireAsset } from './assets';
-import { churnCustomer, compactOpen, priceMultiplier, priceShockProbability } from './demand';
+import { acquireAsset, disposeAsset } from './assets';
+import { churnCustomer, compactOpen, priceMultiplier, priceShockProbability, withdrawCustomer } from './demand';
 import { hireEmployee } from './workforce';
-import { newCrewStats, type DayCtx, type SimState } from './state';
+import { newCrewStats, type CustomerS, type DayCtx, type SimState } from './state';
 
 function isNonNegFinite(x: unknown): x is number {
   return typeof x === 'number' && Number.isFinite(x) && x >= 0;
@@ -183,6 +183,58 @@ export function applyAction(st: SimState, ctx: DayCtx, action: Action, actionInd
         }
         compactOpen(st);
       }
+      return null;
+    }
+    case 'dispose-asset': {
+      if (!disposeAsset(st, ctx, action.assetId)) return `unknown asset ${action.assetId}`;
+      return null;
+    }
+    case 'replace-asset': {
+      const oldV = st.vehicles.find((v) => v.id === action.assetId);
+      const oldE = oldV ? undefined : st.equipment.find((e) => e.id === action.assetId);
+      if (!oldV && !oldE) return `unknown asset ${action.assetId}`;
+      const isVehicleSpec = 'seats' in action.spec;
+      if (oldV && !isVehicleSpec) return 'a vehicle must be replaced by a vehicle';
+      if (oldE && isVehicleSpec) return 'equipment must be replaced by equipment';
+      const p = oldV ? vehicleSpecProblem(action.spec as VehicleSpec) : equipmentSpecProblem(action.spec as EquipmentSpec);
+      if (p) return p;
+      const id = `a-d${day}-${actionIndex}-0`;
+      if (oldV) {
+        const crews = st.crews.filter((c) => c.vehicleId === oldV.id);
+        disposeAsset(st, ctx, oldV.id);
+        addVehicle(st, ctx, id, action.spec as VehicleSpec, action.method);
+        for (const c of crews) c.vehicleId = id;
+      } else {
+        const e = oldE as NonNullable<typeof oldE>;
+        const crewId = e.crewId;
+        disposeAsset(st, ctx, e.id);
+        addEquipment(st, ctx, id, action.spec as EquipmentSpec, action.method, crewId);
+      }
+      return null;
+    }
+    case 'move-employee': {
+      const e = st.employees.find((x) => x.id === action.employeeId && x.active);
+      if (!e) return `unknown employee ${action.employeeId}`;
+      if (action.crewId !== null && !activeCrew(st, action.crewId)) return `unknown crew ${action.crewId}`;
+      e.crewId = action.crewId;
+      return null;
+    }
+    case 'set-wage': {
+      if (!isNonNegFinite(action.multiplier)) return 'invalid multiplier';
+      if (action.employeeId === 'all') {
+        for (const e of st.employees) if (e.active) e.wage *= action.multiplier;
+        return null;
+      }
+      const e = st.employees.find((x) => x.id === action.employeeId && x.active);
+      if (!e) return `unknown employee ${action.employeeId}`;
+      e.wage *= action.multiplier;
+      return null;
+    }
+    case 'drop-customers': {
+      const byId = new Map(st.customers.map((c) => [c.id, c]));
+      for (const id of action.customerIds) if (!byId.has(id)) return `unknown customer ${id}`;
+      for (const id of action.customerIds) withdrawCustomer(st, ctx, byId.get(id) as CustomerS);
+      compactOpen(st);
       return null;
     }
     default:

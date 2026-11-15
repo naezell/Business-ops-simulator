@@ -41,6 +41,7 @@ function acquisitionsOf(action: Action): { price: number; method: 'cash' | 'loan
       ];
     case 'acquire-vehicle':
     case 'acquire-equipment':
+    case 'replace-asset':
       return [{ price: action.spec.purchasePrice, method: action.method }];
     default:
       return [];
@@ -50,7 +51,8 @@ function acquisitionsOf(action: Action): { price: number; method: 'cash' | 'loan
 function checkIncomeSubtotals(i: IncomeStatement, what: string): void {
   const gp = i.revenue - i.directLabor - i.payrollBurden - i.materials - i.fuel - i.maintenance - i.equipmentLeases;
   const eb = gp - i.overhead - i.marketing - i.hiringCosts - i.badDebt;
-  const op = eb - i.depreciation;
+  // simulation-design §6: operatingProfit = ebitda − depreciation + gainOnDisposal.
+  const op = eb - i.depreciation + i.gainOnDisposal;
   const np = op - i.interest;
   const s = Math.max(1, i.revenue, i.directLabor);
   close(i.grossProfit, gp, `${what} grossProfit`, s);
@@ -63,7 +65,17 @@ function checkCashFlow(c: CashFlowStatement, i: IncomeStatement, what: string): 
   const opOut = i.materials + i.fuel + i.maintenance + i.equipmentLeases + i.overhead + i.marketing + i.hiringCosts;
   close(c.operatingCashOut, opOut, `${what} operatingCashOut`);
   const net =
-    c.collections - c.payrollPaid - c.operatingCashOut - c.interestPaid - c.capex + c.loanProceeds - c.principalPaid + c.locDraw - c.locRepay;
+    c.collections -
+    c.payrollPaid -
+    c.operatingCashOut -
+    c.interestPaid -
+    c.capex +
+    c.loanProceeds -
+    c.principalPaid +
+    c.locDraw -
+    c.locRepay +
+    c.assetSaleProceeds -
+    c.ownerDistributions;
   close(c.netCashFlow, net, `${what} netCashFlow`, Math.max(c.collections, c.payrollPaid));
   expect(c.loanProceeds).toBe(0);
   close(c.interestPaid, i.interest, `${what} interestPaid = interest`);
@@ -145,7 +157,23 @@ export function assertInvariants(scenario: Scenario, result: SimulationResult): 
       downUntil.set(id, l);
     }
   }
-  const isDown = (id: string, day: number) => (downUntil.get(id) ?? []).some((p) => day >= p.from && day <= p.to);
+  // Outage shocks make an asset unavailable for their window (simulation-design §2).
+  for (const s of scenario.shocks ?? []) {
+    if (s.type !== 'outage') continue;
+    const l = downUntil.get(s.assetId) ?? [];
+    l.push({ from: s.fromDay, to: s.toDay - 1 });
+    downUntil.set(s.assetId, l);
+  }
+  // Disposed assets: book value leaves NFA that day; never used again (simulation-design §6).
+  const disposedBook = new Map<number, number>();
+  const disposedOn = new Map<string, number>();
+  for (const ev of result.events) {
+    if (ev.type !== 'asset-disposed') continue;
+    disposedBook.set(ev.day, (disposedBook.get(ev.day) ?? 0) + ev.bookValue);
+    disposedOn.set(ev.assetId, ev.day);
+  }
+  const isDown = (id: string, day: number) =>
+    (downUntil.get(id) ?? []).some((p) => day >= p.from && day <= p.to) || (disposedOn.has(id) && day >= (disposedOn.get(id) as number));
 
   let policies: Policies = { ...co.policies };
   let created = 0;
@@ -167,7 +195,7 @@ export function assertInvariants(scenario: Scenario, result: SimulationResult): 
     checkCashFlow(c, i, w);
     // Non-negative flows.
     for (const k of Object.keys(i) as (keyof IncomeStatement)[]) {
-      if (!['grossProfit', 'ebitda', 'operatingProfit', 'netProfit'].includes(k)) expect(i[k], `${w} ${k}`).toBeGreaterThanOrEqual(0);
+      if (!['grossProfit', 'ebitda', 'operatingProfit', 'netProfit', 'gainOnDisposal'].includes(k)) expect(i[k], `${w} ${k}`).toBeGreaterThanOrEqual(0);
     }
     for (const k of Object.keys(c) as (keyof CashFlowStatement)[]) {
       if (k !== 'netCashFlow') expect(c[k], `${w} ${k}`).toBeGreaterThanOrEqual(0);
@@ -178,7 +206,8 @@ export function assertInvariants(scenario: Scenario, result: SimulationResult): 
     close(b.cash, cash + c.netCashFlow, `${w} cash roll-forward`, scale);
     close(b.accountsReceivable, ar + i.revenue - c.collections - i.badDebt, `${w} AR roll-forward`, scale);
     close(b.accruedPayroll, accrued + i.directLabor + i.payrollBurden - c.payrollPaid, `${w} accrued payroll roll-forward`, scale);
-    close(b.netFixedAssets, nfa + (additions.get(t) ?? 0) - i.depreciation, `${w} NFA roll-forward`, scale);
+    // identity 4 (amended): − disposed book value.
+    close(b.netFixedAssets, nfa + (additions.get(t) ?? 0) - i.depreciation - (disposedBook.get(t) ?? 0), `${w} NFA roll-forward`, scale);
     close(b.loanBalance, loan + (borrowing.get(t) ?? 0) - c.principalPaid, `${w} loan roll-forward`, scale);
     close(b.locBalance, loc + c.locDraw - c.locRepay, `${w} LOC roll-forward`, scale);
     // Balance definitions.
@@ -190,7 +219,8 @@ export function assertInvariants(scenario: Scenario, result: SimulationResult): 
       scale,
     );
     // §9.7 master identity.
-    close(b.equity - equity, i.netProfit, `${w} equity change = net profit`, scale);
+    // identity 7 (amended): Δequity = net profit − owner distributions.
+    close(b.equity - equity, i.netProfit - c.ownerDistributions, `${w} equity change = net profit − distributions`, scale);
     // Balance sanity.
     expect(b.accountsReceivable).toBeGreaterThanOrEqual(-1e-6);
     expect(b.accruedPayroll).toBeGreaterThanOrEqual(-1e-6);

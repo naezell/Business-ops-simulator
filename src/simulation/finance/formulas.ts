@@ -203,3 +203,19 @@ export function equity(
 ): number {
   return cash + ar + netFixedAssets - accruedPayroll - loanBalance - locBalance;
 }
+
+// ───────────── Disposal and owner distributions (digital-twin simulation-design §6) ─────────────
+
+/** Default share of (book − salvage) recovered on sale when FinanceParams.resaleShareOfBookValue is missing. */
+export const DEFAULT_RESALE_SHARE = 0.8;
+
+/** Sale proceeds P = S + share × max(0, B − S). */
+export function disposalProceeds(bookValue: number, salvageValue: number, resaleShare: number): number {
+  return salvageValue + resaleShare * Math.max(0, bookValue - salvageValue);
+}
+
+/** Owner distribution D = max(0, cashBefore − X), and 0 while the line of credit has a balance. */
+export function ownerDistribution(cashBefore: number, cashAbove: number, locBalance: number): number {
+  if (locBalance > 0) return 0;
+  return Math.max(0, cashBefore - cashAbove);
+}

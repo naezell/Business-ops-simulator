@@ -78,6 +78,7 @@ export function applyActionsAtDayZero(company: CompanyConfig, actions: PlannedAc
       ops: zeroOps(),
       assetAdditions: 0,
       newBorrowing: 0,
+      disposedBook: 0,
       m: NO_SHOCK,
     };
     const reason = applyAction(st, ctx, structuredClone(pa.action), index);

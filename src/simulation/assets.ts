@@ -1,7 +1,15 @@
 /** Assets (simulation-engine §9, financial-model §5–6): breakdowns, acquisitions, depreciation, loans. */
 import type { AcquisitionMethod, Id } from './types';
 import { STREAM, hashString, rand01, uniformInt, uniformRange } from './rng';
-import { acquisitionFlows, dailyDepreciation, depreciationForDay, loanMonthStep, loanPayment } from './finance/formulas';
+import {
+  DEFAULT_RESALE_SHARE,
+  acquisitionFlows,
+  dailyDepreciation,
+  depreciationForDay,
+  disposalProceeds,
+  loanMonthStep,
+  loanPayment,
+} from './finance/formulas';
 import type { AssetS, DayCtx, SimState } from './state';
 import type { BreakdownParams } from './types';
 import { scaleProbability } from './conditions';
@@ -131,4 +139,40 @@ export function leaseCostPerDay(assets: AssetS[]): number {
   let t = 0;
   for (const a of assets) if (a.leased) t += a.leaseDaily;
   return t;
+}
+
+/**
+ * Dispose of an asset today (simulation-design §6). Owned/financed: proceeds
+ * P = S + share × max(0, B − S), gain P − B, book value leaves net fixed assets, a loan is paid off
+ * (principal). Leased: the lease ends; no proceeds, no gain. The asset leaves the company's lists,
+ * so it is never used, depreciated, maintained or paid for again. Returns false if unknown.
+ */
+export function disposeAsset(st: SimState, ctx: DayCtx, assetId: Id): boolean {
+  const vi = st.vehicles.findIndex((v) => v.id === assetId);
+  const ei = vi >= 0 ? -1 : st.equipment.findIndex((e) => e.id === assetId);
+  if (vi < 0 && ei < 0) return false;
+  const a = vi >= 0 ? st.vehicles[vi].a : st.equipment[ei].a;
+  let proceeds = 0;
+  let book = 0;
+  if (!a.leased) {
+    book = a.book;
+    const share = st.company.finance.resaleShareOfBookValue ?? DEFAULT_RESALE_SHARE;
+    proceeds = disposalProceeds(book, a.salvage, share);
+    ctx.cf.assetSaleProceeds += proceeds;
+    ctx.inc.gainOnDisposal += proceeds - book;
+    ctx.disposedBook += book;
+    if (a.loan && a.loan.balance > 0) {
+      ctx.cf.principalPaid += a.loan.balance;
+      a.loan.balance = 0;
+      a.loan.monthsRemaining = 0;
+    }
+  }
+  if (vi >= 0) {
+    st.vehicles.splice(vi, 1);
+    for (const c of st.crews) if (c.vehicleId === assetId) c.vehicleId = null;
+  } else {
+    st.equipment.splice(ei, 1);
+  }
+  st.events.push({ day: ctx.day, type: 'asset-disposed', assetId, proceeds, bookValue: book });
+  return true;
 }

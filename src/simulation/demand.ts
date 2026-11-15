@@ -174,6 +174,24 @@ export function churnCustomer(st: SimState, ctx: DayCtx, c: CustomerS): void {
   }
 }
 
+/**
+ * The company stops serving a customer (drop-customers, simulation-design §6): withdrawn, not churned —
+ * no churn count and no missed-job or failure accounting. Open orders are withdrawn.
+ */
+export function withdrawCustomer(st: SimState, ctx: DayCtx, c: CustomerS): void {
+  if (!c.active) return;
+  c.active = false;
+  st.activeCustomerCount -= 1;
+  if (c.planIdx >= 0) st.activePlanCounts[c.planIdx] -= 1;
+  c.churnedDay = ctx.day;
+  for (const o of st.open) {
+    if (o.status === 'open' && o.cust === c) {
+      o.status = 'withdrawn';
+      ctx.ops.jobsWithdrawn += 1;
+    }
+  }
+}
+
 export function compactOpen(st: SimState): void {
   let w = 0;
   const arr = st.open;
