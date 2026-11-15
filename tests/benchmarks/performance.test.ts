@@ -20,3 +20,44 @@ it('365-day run with 200 recurring customers and 3 crews is fast in summary mode
   // Budget is 30 ms; the assertion is generous to avoid CI flakiness.
   expect(median).toBeLessThan(150);
 });
+
+// ───────────── Digital-twin gates (implementation-contracts §8) ─────────────
+import { createDemoTwinScenario } from '../../src/business/landscaping/demoTwin';
+import { createInProcessBackend, runStudy } from '../../src/optimization';
+import { getIndustry } from '../../src/business/registry';
+import { catalogFromIndustry } from '../../src/services/simClient';
+
+function medianMs(fn: () => void, warm = 3, n = 9): number {
+  for (let i = 0; i < warm; i++) fn();
+  const t: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const t0 = performance.now();
+    fn();
+    t.push(performance.now() - t0);
+  }
+  t.sort((a, b) => a - b);
+  return t[Math.floor(n / 2)];
+}
+
+it('demo scenario, 90 days, summary, dynamics on (gate 12 ms)', () => {
+  const s = createDemoTwinScenario();
+  const med = medianMs(() => runSimulation(s, { detail: 'summary' }));
+  console.log(`[perf] twin-90, 90 days, summary: median ${med.toFixed(2)} ms`);
+  expect(med).toBeLessThan(60);
+});
+
+it('demo scenario, 3 years, summary (gate 150 ms)', () => {
+  const s = { ...createDemoTwinScenario(), horizonDays: 1095 };
+  const med = medianMs(() => runSimulation(s, { detail: 'summary' }), 1, 5);
+  console.log(`[perf] twin-90, 1095 days, summary: median ${med.toFixed(2)} ms`);
+  expect(med).toBeLessThan(750);
+});
+
+it('default study on the demo, in-process, single thread (target 120 s)', async () => {
+  const scenario = createDemoTwinScenario();
+  const t0 = performance.now();
+  const r = await runStudy({ scenario, catalog: catalogFromIndustry(getIndustry('landscaping')), objective: 'net-profit' }, createInProcessBackend(scenario));
+  const s = (performance.now() - t0) / 1000;
+  console.log(`[perf] default study on twin-90: ${s.toFixed(1)} s, ${r.simulationsRun} simulations, ${r.feasibleStrategiesEvaluated} feasible strategies`);
+  expect(s).toBeLessThan(600);
+}, 900000);
