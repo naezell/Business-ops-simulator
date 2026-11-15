@@ -49,7 +49,7 @@ severity < 0.02 are omitted; the list is sorted by severity.
 | `weak-demand` | `idleShare = idleHours / paidHours`; flagged when > 0.15 | `(idleShare − 0.10) × (directLabor + payrollBurden)`, annualized | `(idleShare − 0.10) / 0.30` |
 | `routing-inefficiency` | Baseline re-run with each other routing policy | best positive mean Δ net profit, annualized (a **simulated** figure) | `impact / (0.05·R)` |
 | `unprofitable-job-type` | `jobTypeStats[j].contribution < 0` | `−contribution`, annualized | `impact / (0.05·R)` |
-| `cash-constraint` | any shortfall day, or min cash < `minCashReserve` | annualized interest paid | 1 if any shortfall day, else 0.5 |
+| `cash-constraint` | any shortfall day, or min cash < `minCashReserve` | annualized interest paid | 1 if any shortfall day, else `0.25 × (reserve − minCash) / reserve` |
 
 If `R = 0`, severities with `R` in the denominator are 1 when impact > 0.
 Headline and detail strings are deterministic templates filled from `evidence`.
@@ -90,7 +90,12 @@ Simulated (any seed):
 - an `action-rejected` event;
 - more shortfall days than the baseline in the same seed, or (when the baseline
   has none) end-of-day cash below `minCashFloor` (default 0);
-- seed-mean missed-job rate above `max(maxMissedJobRate, baselineRate + 0.005)` (default cap 0.05).
+- seed-mean missed-job rate above `max(maxMissedJobRate, baselineRate + 0.005)` (default cap 0.05);
+- seed-mean ending active customers below `(1 − maxCustomerLossFraction) ×` the baseline's (default 0.10).
+  Rationale: the horizon is finite. An action that sheds customers (a steep price
+  rise, dropping a service) can raise profit inside the horizon while damaging the
+  years after it. The simulator cannot see past the horizon, so the guard is an
+  explicit, owner-adjustable constraint rather than a hidden terminal-value formula.
 
 `recommended` = feasible ∧ mean objective delta > 0 ∧
 `probabilityOfImprovement ≥ minProbabilityOfImprovement` (default 0.7).
@@ -100,7 +105,8 @@ Simulated (any seed):
 - `candidates` = feasible singles sorted by mean objective delta, descending
   (ties: lower `upfrontCash`, then `id`).
 - Beam search for `bestPlan`:
-  1. Pool = up to 10 best `recommended` singles.
+  1. Pool = the best `recommended` single **per conflict key**, then the 10 best of those.
+     (Without this, ten price points crowd out every other kind of action and no plan can be formed.)
   2. Beams = the best `beamWidth` (default 3) of the pool, as 1-action plans.
   3. For size 2 … `maxPlanSize` (default 3): extend every beam with every pool
      member that does not conflict; de-duplicate by action-id set; evaluate on
@@ -122,6 +128,10 @@ Simulated (any seed):
   customers), where the money moved (revenue and the two largest cost drivers),
   the range across seeds and probability of improvement, and cash (upfront,
   lowest cash, payback).
+- `assumptionSensitive` is true for any plan containing a pricing, marketing or
+  service-mix action. Its explanation must end with a sentence saying the result
+  depends on illustrative price-sensitivity / marketing-response assumptions and
+  that the change in ending customers (`deltaEndCustomers`) continues to matter after the horizon.
 - `paybackDays`: on the seed-mean daily series of Δ(`cash − locBalance`), the
   first day from which the series stays ≥ 0 to the horizon; `null` if
   `upfrontCash = 0` or it never does.
@@ -143,6 +153,8 @@ Simulated (any seed):
 7. **Determinism**: same request ⇒ deep-equal result (excluding `elapsedMs`).
 8. **Drivers** sum to mean Δ net profit for every candidate.
 9. No recommended candidate or plan violates any constraint in §5 when re-simulated by the test.
+10. **Customer-loss guard**: with high retention elasticity, a steep price rise that improves in-horizon profit but loses more than the allowed share of customers is in `infeasible`.
+11. **Plan diversity**: when the ten best singles share one conflict key, `bestPlan` can still combine actions with different keys.
 
 ## 9. Limits to state honestly in the UI
 
