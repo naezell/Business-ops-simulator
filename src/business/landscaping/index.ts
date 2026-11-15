@@ -6,6 +6,7 @@ import {
   standardCrew,
   vehicleCatalog,
 } from './catalog';
+import { createDemoTwinScenario, demoTwinScenarios } from './demoTwin';
 import { landscapingJobTypes } from './jobTypes';
 import { landscapingParamMeta } from './paramMeta';
 import { createSampleCompany } from './sampleCompany';
@@ -26,6 +27,7 @@ export const landscaping: IndustryDefinition = {
   standardCrew,
   paramMeta: landscapingParamMeta,
   createSampleCompany,
+  demoScenarios: demoTwinScenarios,
 };
 
-export { createSampleCompany, landscapingJobTypes, landscapingParamMeta };
+export { createDemoTwinScenario, createSampleCompany, landscapingJobTypes, landscapingParamMeta };

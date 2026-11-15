@@ -15,6 +15,7 @@ import type {
   ParamMeta,
   VehicleSpec,
 } from '../simulation/types';
+import type { TwinScenario } from '../simulation/types-twin';
 
 export interface EquipmentTypeDef {
   id: Id;
@@ -51,4 +52,16 @@ export interface IndustryDefinition {
   paramMeta: Record<string, ParamMeta>;
   /** Builds the synthetic demonstration company. Must be deterministic. */
   createSampleCompany: () => CompanyConfig;
+  /**
+   * ADDITIVE (digital twin, IC §10): ready-made synthetic demonstration scenarios.
+   * Each `create()` must be deterministic.
+   */
+  demoScenarios?: DemoScenarioDef[];
+}
+
+export interface DemoScenarioDef {
+  id: Id;
+  name: string;
+  description: string;
+  create: () => TwinScenario;
 }
