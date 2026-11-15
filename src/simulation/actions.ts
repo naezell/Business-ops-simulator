@@ -44,14 +44,14 @@ function policyPatchProblem(p: Partial<Policies>): string | null {
 
 function addVehicle(st: SimState, ctx: DayCtx, id: Id, spec: VehicleSpec, method: AcquisitionMethod) {
   const a = acquireAsset(st, ctx, id, spec, method);
-  const v = { id, seats: spec.seats, mpg: spec.mpg, maintPerMile: spec.maintenanceCostPerMile, a };
+  const v = { id, seats: spec.seats, mpg: spec.mpg, maintPerMile: spec.maintenanceCostPerMile, a, spec };
   st.vehicles.push(v);
   return v;
 }
 
 function addEquipment(st: SimState, ctx: DayCtx, id: Id, spec: EquipmentSpec, method: AcquisitionMethod, crewId: Id | null) {
   const a = acquireAsset(st, ctx, id, spec, method);
-  st.equipment.push({ id, typeId: spec.equipmentTypeId, crewId, maintPerHour: spec.maintenanceCostPerHour, a, hoursToday: 0 });
+  st.equipment.push({ id, typeId: spec.equipmentTypeId, crewId, maintPerHour: spec.maintenanceCostPerHour, a, hoursToday: 0, spec });
 }
 
 function leave(st: SimState, employeeId: Id): void {

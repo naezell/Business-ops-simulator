@@ -8,8 +8,8 @@ import type { ResolvedConstraints } from './constraints';
 import { simulatedReasons, staticReasons, upfrontCash } from './constraints';
 import type { Evaluator, RunSummary } from './evaluate';
 import { confidenceLabel, distribution, mean, objectiveValue, shareImproved } from './evaluate';
-import { computeDrivers, explanationSentences, paybackDays } from './explain';
-import type { CandidateEvaluation, Objective } from './types';
+import { assumptionSentence, computeDrivers, explanationSentences, paybackDays } from './explain';
+import type { CandidateCategory, CandidateEvaluation, Objective } from './types';
 
 export const SCREEN_SEEDS = 2;
 export const SCREEN_KEEP = 15;
@@ -36,6 +36,13 @@ export interface Option {
   actions: PlannedAction[];
 }
 
+/** Categories whose effect rests on illustrative behavioural assumptions (optimization-engine §7). */
+export const ASSUMPTION_CATEGORIES: readonly CandidateCategory[] = ['pricing', 'marketing', 'service-mix'];
+
+export function isAssumptionSensitive(members: { category: CandidateCategory }[]): boolean {
+  return members.some((m) => ASSUMPTION_CATEGORIES.includes(m.category));
+}
+
 export function singleOption(c: CandidateDef): Option {
   return { key: c.id, label: c.label, category: c.category, members: [c], actions: c.actions };
 }
@@ -59,6 +66,7 @@ function emptyDist() {
 
 /** Evaluation for an option that failed a static check (never simulated). */
 export function staticallyInfeasible(ctx: SearchContext, opt: Option, reasons: string[]): CandidateEvaluation {
+  const sensitive = isAssumptionSensitive(opt.members);
   return {
     id: opt.key,
     label: opt.label,
@@ -71,6 +79,8 @@ export function staticallyInfeasible(ctx: SearchContext, opt: Option, reasons: s
     deltaNetProfit: emptyDist(),
     deltaEndingCash: emptyDist(),
     deltaRevenue: emptyDist(),
+    deltaEndCustomers: emptyDist(),
+    assumptionSensitive: sensitive,
     probabilityOfImprovement: 0,
     upfrontCash: upfrontCash(ctx.company, opt.actions),
     minCash: 0,
@@ -78,7 +88,7 @@ export function staticallyInfeasible(ctx: SearchContext, opt: Option, reasons: s
     utilization: { before: 0, after: 0 },
     missedJobRate: { before: 0, after: 0 },
     drivers: [],
-    explanation: [`Not simulated: ${reasons.join(' ')}`],
+    explanation: [`Not simulated: ${reasons.join(' ')}`, ...(sensitive ? [assumptionSentence(null, ctx.horizonDays)] : [])],
     confidence: 'low',
   };
 }
@@ -91,6 +101,8 @@ export function evaluateOption(ctx: SearchContext, opt: Option, seeds: number[])
   const dNet = runs.map((r, i) => r.netProfit - base[i].netProfit);
   const dCash = runs.map((r, i) => r.endingCash - base[i].endingCash);
   const dRev = runs.map((r, i) => r.revenue - base[i].revenue);
+  const dCust = runs.map((r, i) => r.endActiveCustomers - base[i].endActiveCustomers);
+  const sensitive = isAssumptionSensitive(opt.members);
   const dObj = runs.map((r, i) => objectiveValue(r, ctx.objective) - objectiveValue(base[i], ctx.objective));
   const reasons = simulatedReasons(runs, base, ctx.constraints);
   const feasible = reasons.length === 0;
@@ -113,6 +125,8 @@ export function evaluateOption(ctx: SearchContext, opt: Option, seeds: number[])
     deltaNetProfit,
     deltaEndingCash: distribution(dCash),
     deltaRevenue: distribution(dRev),
+    deltaEndCustomers: distribution(dCust),
+    assumptionSensitive: sensitive,
     probabilityOfImprovement: pImp,
     upfrontCash: upfront,
     minCash,
@@ -120,17 +134,20 @@ export function evaluateOption(ctx: SearchContext, opt: Option, seeds: number[])
     utilization: { before: mean(base.map((r) => r.utilization)), after: mean(runs.map((r) => r.utilization)) },
     missedJobRate: { before: mean(base.map((r) => r.missedJobRate)), after: mean(runs.map((r) => r.missedJobRate)) },
     drivers,
-    explanation: explanationSentences({
-      runs,
-      base,
-      drivers,
-      horizonDays: ctx.horizonDays,
-      upfront,
-      minCash,
-      payback,
-      probabilityOfImprovement: pImp,
-      deltaNet: deltaNetProfit,
-    }),
+    explanation: [
+      ...explanationSentences({
+        runs,
+        base,
+        drivers,
+        horizonDays: ctx.horizonDays,
+        upfront,
+        minCash,
+        payback,
+        probabilityOfImprovement: pImp,
+        deltaNet: deltaNetProfit,
+      }),
+      ...(sensitive ? [assumptionSentence(mean(dCust), ctx.horizonDays)] : []),
+    ],
     confidence: confidenceLabel(dObj),
   };
 }
@@ -160,7 +177,25 @@ interface Beam {
 }
 
 /**
- * Beam search (§6): pool = up to 10 best recommended singles, beams = best
+ * Plan pool (§6.1): the best recommended single per conflict key (in `ranked` order),
+ * then the first `POOL_SIZE` of those.
+ */
+export function planPool(ranked: CandidateEvaluation[], defs: Map<string, CandidateDef>): CandidateEvaluation[] {
+  const keys = new Set<string>();
+  const pool: CandidateEvaluation[] = [];
+  for (const e of ranked) {
+    if (!e.recommended) continue;
+    const d = defs.get(e.id);
+    if (!d || keys.has(d.conflictKey)) continue;
+    keys.add(d.conflictKey);
+    pool.push(e);
+    if (pool.length === POOL_SIZE) break;
+  }
+  return pool;
+}
+
+/**
+ * Beam search (§6): pool = best recommended single per conflict key (up to 10), beams = best
  * `beamWidth`; extend by non-conflicting pool members up to `maxPlanSize`.
  */
 export function beamSearch(
@@ -172,7 +207,7 @@ export function beamSearch(
   onPlanProgress?: (completed: number, total: number) => void,
 ): PlanSearchOutput {
   const { objective } = ctx;
-  const pool = ranked.filter((e) => e.recommended).slice(0, POOL_SIZE);
+  const pool = planPool(ranked, defs);
   const infeasible: CandidateEvaluation[] = [];
   if (pool.length === 0) return { bestPlan: null, infeasible };
   const poolDefs = pool.map((e) => defs.get(e.id) as CandidateDef);

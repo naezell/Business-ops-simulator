@@ -7,6 +7,7 @@ import type { CompanyConfig, Id } from '../simulation';
 import { diagnoseBottlenecks, type RoutingProbe } from './bottlenecks';
 import { generateCandidates, type CandidateDef } from './candidates';
 import {
+  DEFAULT_MAX_CUSTOMER_LOSS_FRACTION,
   DEFAULT_MAX_MISSED_JOB_RATE,
   DEFAULT_MIN_CASH_FLOOR,
   DEFAULT_MIN_PROBABILITY_OF_IMPROVEMENT,
@@ -61,6 +62,7 @@ export function optimize(
   const constraints: ResolvedConstraints = {
     minCashFloor: request.constraints?.minCashFloor ?? DEFAULT_MIN_CASH_FLOOR,
     maxMissedJobRate: request.constraints?.maxMissedJobRate ?? DEFAULT_MAX_MISSED_JOB_RATE,
+    maxCustomerLossFraction: request.constraints?.maxCustomerLossFraction ?? DEFAULT_MAX_CUSTOMER_LOSS_FRACTION,
     minProbabilityOfImprovement: request.constraints?.minProbabilityOfImprovement ?? DEFAULT_MIN_PROBABILITY_OF_IMPROVEMENT,
   };
   const seeds = seedsFor(scenario.seed, K);
@@ -155,6 +157,7 @@ export function optimize(
       minCash,
       utilization: mean(base.map((r) => r.utilization)),
       missedJobRate: mean(base.map((r) => r.missedJobRate)),
+      endCustomers: mean(base.map((r) => r.endActiveCustomers)),
     },
     bottlenecks,
     candidates,

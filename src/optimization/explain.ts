@@ -128,3 +128,19 @@ export function explanationSentences(x: ExplainInput): string[] {
   out.push(`${cashText}; the lowest cash balance in any seed is ${fmtUsd(x.minCash)}.`);
   return out;
 }
+
+/**
+ * Closing sentence for assumption-sensitive plans (§7): the result rests on illustrative
+ * price-sensitivity / marketing-response assumptions, and the change in ending customers
+ * keeps mattering after the horizon. `deltaEndCustomers` null = not simulated.
+ */
+export function assumptionSentence(deltaEndCustomers: number | null, horizonDays: number): string {
+  const head =
+    'This result depends on illustrative price-sensitivity and marketing-response assumptions, not on measured customer behaviour';
+  if (deltaEndCustomers === null) {
+    return `${head}; any change in active customers would keep affecting revenue after the ${horizonDays}-day horizon.`;
+  }
+  const n = Math.round(deltaEndCustomers);
+  const what = n === 0 ? 'leaves the number of active customers at the end about unchanged' : `${n > 0 ? 'adds' : 'loses'} ${Math.abs(n)} active customer${Math.abs(n) === 1 ? '' : 's'} by the end`;
+  return `${head}; the plan ${what}, and that change keeps affecting revenue after the ${horizonDays}-day horizon.`;
+}

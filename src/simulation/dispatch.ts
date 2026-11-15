@@ -477,6 +477,8 @@ export function dispatchDay(st: SimState, ctx: DayCtx, weather: WeatherState, fu
       stops: r.stops,
       endClock: r.endClock,
       miles: r.miles,
+      onSiteHours: deployed ? r.onSiteClock : 0,
+      travelHours: deployed ? r.travelClock : 0,
     };
     if (reason) log.notDeployedReason = reason;
     return log;

@@ -58,6 +58,13 @@ export function revenueSeverity(impact: number, share: number, annualRevenue: nu
   return clamp01(impact / (share * annualRevenue));
 }
 
+/** `cash-constraint` severity: 1 with any shortfall day, else 0.25 × (reserve − minCash) / reserve, clamped to 0..1. */
+export function cashSeverity(shortfallDays: number, minCash: number, reserve: number): number {
+  if (shortfallDays > 0) return 1;
+  if (!(reserve > 0)) return 0;
+  return clamp01((0.25 * (reserve - minCash)) / reserve);
+}
+
 export interface RoutingProbe {
   policy: string;
   /** Mean paired Δ net profit over the horizon. */
@@ -159,7 +166,7 @@ export function diagnoseBottlenecks(
     const interest = m((r) => r.income.interest) * annual;
     out.push({
       kind: 'cash-constraint',
-      severity: shortfallDays > 0 ? 1 : 0.5,
+      severity: cashSeverity(shortfallDays, minCash, reserve),
       estimatedAnnualImpact: interest,
       headline: HEADLINES['cash-constraint'],
       detail:

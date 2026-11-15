@@ -10,6 +10,8 @@ import type { Action, CompanyConfig, PlannedAction, Scenario, SimulationResult, 
 import { defaultIndustryId, getIndustry } from '@/business/registry';
 import type { IndustryDefinition } from '@/business/types';
 import { applyPatch, chipKey, type CompanyPatch } from './derive';
+import type { Objective, OptimizationProgress, OptimizationResult } from '@/optimization';
+import { catalogFromIndustry, runOptimization, type OptimizationHandle } from './simClient';
 import { clearPersisted, loadPersisted, savePersisted, type PersistedState, type ViewId } from './persistence';
 
 export type { ViewId } from './persistence';
@@ -70,6 +72,25 @@ function buildScenarios(industry: IndustryDefinition, core: Core): { baseline: S
   return { baseline, draft, company };
 }
 
+/** Optimizer state. Lives in memory only (never persisted). */
+export interface OptState {
+  status: 'idle' | 'running' | 'error';
+  /** Objective of the run in progress or the last run requested. */
+  objective: Objective;
+  progress: OptimizationProgress | null;
+  result: OptimizationResult | null;
+  /** Fingerprint of the scenario the result was computed for; compare with scenarioKey(state). */
+  resultKey: string | null;
+  /** Candidate ids the user applied from the current result. */
+  appliedIds: string[];
+  error: string | null;
+}
+
+/** Fingerprint of everything that changes what the optimizer would see. */
+export function scenarioKey(s: Core): string {
+  return JSON.stringify([s.industryId, s.seed, s.horizonMonths, s.patch, s.baselineActions, s.draftActions]);
+}
+
 export interface AppState extends Core {
   industry: IndustryDefinition;
   /** Company with user edits applied (before any actions). */
@@ -84,6 +105,7 @@ export interface AppState extends Core {
   pending: boolean;
   selectedDay: number;
   view: ViewId;
+  opt: OptState;
 
   setView: (v: ViewId) => void;
   setSelectedDay: (d: number) => void;
@@ -91,6 +113,10 @@ export interface AppState extends Core {
   setDraftAction: (action: Action, day?: number) => void;
   /** Removes the chip with the given key (no-op if absent). */
   removeDraftByKey: (key: string) => void;
+  /** Appends several planned actions through the same de-duplication as chips. Used by the optimizer. */
+  applyPlannedActions: (actions: PlannedAction[], candidateId?: string) => void;
+  startOptimization: (objective: Objective) => void;
+  cancelOptimization: () => void;
   removeDraftAt: (index: number) => void;
   resetDraft: () => void;
   adoptDraft: () => void;
@@ -161,6 +187,7 @@ function initial(): Built & { selectedDay: number; view: ViewId } {
 let timer: ReturnType<typeof setTimeout> | null = null;
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 let lastBaselineKey = '';
+let optHandle: OptimizationHandle | null = null;
 
 const baselineKeyOf = (c: Core) => JSON.stringify([c.industryId, c.seed, c.horizonMonths, c.patch, c.baselineActions]);
 
@@ -252,6 +279,7 @@ export const useStore = create<AppState>()((set, get) => {
     pending: false,
     selectedDay: Math.min(init.selectedDay, init.baselineResult.horizonDays - 1),
     view: init.view,
+    opt: { status: 'idle', objective: 'net-profit', progress: null, result: null, resultKey: null, appliedIds: [], error: null },
 
     setView: (view) => set({ view }),
     setSelectedDay: (d) => set((s) => ({ selectedDay: Math.max(0, Math.min(s.horizonDays - 1, Math.round(d))) })),
@@ -263,6 +291,66 @@ export const useStore = create<AppState>()((set, get) => {
       if (at >= 0) list[at] = { day, action };
       else list.push({ day, action });
       commit({ draftActions: list });
+    },
+    applyPlannedActions: (actions, candidateId) => {
+      const list = get().draftActions.slice();
+      for (const pa of actions) {
+        const key = chipKey(pa.action);
+        const at = key === null ? -1 : list.findIndex((p) => chipKey(p.action) === key);
+        if (at >= 0) list[at] = { day: pa.day, action: pa.action };
+        else list.push({ day: pa.day, action: pa.action });
+      }
+      const opt = get().opt;
+      commit({ draftActions: list }, candidateId ? { opt: { ...opt, appliedIds: [...opt.appliedIds, candidateId] } } : {});
+    },
+    startOptimization: (objective) => {
+      const s = get();
+      if (s.opt.status === 'running') return;
+      const core: Core = {
+        industryId: s.industryId,
+        seed: s.seed,
+        horizonMonths: s.horizonMonths,
+        baselineActions: s.baselineActions,
+        draftActions: s.draftActions,
+        patch: s.patch,
+      };
+      const key = scenarioKey(core);
+      // The optimizer improves the current draft: baseline plus pending decisions is the scenario it starts from.
+      const { draft } = buildScenarios(s.industry, core);
+      let handle: OptimizationHandle;
+      let lastPush = 0;
+      try {
+        handle = runOptimization({ scenario: draft, catalog: catalogFromIndustry(s.industry), objective }, (p) => {
+          const now = Date.now();
+          const cur = get().opt.progress;
+          if (cur && cur.phase === p.phase && now - lastPush < 100) return;
+          lastPush = now;
+          set({ opt: { ...get().opt, progress: p } });
+        });
+      } catch (e) {
+        set({ opt: { ...s.opt, status: 'error', error: e instanceof Error ? e.message : String(e) } });
+        return;
+      }
+      optHandle = handle;
+      set({ opt: { ...s.opt, status: 'running', objective, progress: { phase: 'baseline', completed: 0, total: 1 }, error: null } });
+      handle.promise.then(
+        (result) => {
+          if (optHandle !== handle) return;
+          optHandle = null;
+          set({ opt: { status: 'idle', objective, progress: null, result, resultKey: key, appliedIds: [], error: null } });
+        },
+        (err: Error) => {
+          if (optHandle !== handle) return;
+          optHandle = null;
+          const cancelled = err.name === 'AbortError';
+          set({ opt: { ...get().opt, status: cancelled ? 'idle' : 'error', progress: null, error: cancelled ? null : err.message } });
+        },
+      );
+    },
+    cancelOptimization: () => {
+      const h = optHandle;
+      if (!h) return;
+      h.cancel();
     },
     removeDraftByKey: (key) => {
       const list = get().draftActions.filter((p) => chipKey(p.action) !== key);

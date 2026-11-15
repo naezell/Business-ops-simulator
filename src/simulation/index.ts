@@ -3,6 +3,8 @@ export type * from './types';
 
 export { runSimulation, weatherFromDraw, summarize } from './engine';
 export { validateScenario } from './validate';
+export { applyActionsAtDayZero } from './project';
+export type { ProjectedCompany, RejectedProjectionAction } from './project';
 
 export { rand01, hashString, poissonInverse, uniformInt, uniformRange, STREAM } from './rng';
 export type { StreamId } from './rng';

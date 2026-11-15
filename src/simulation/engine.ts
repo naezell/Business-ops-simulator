@@ -248,6 +248,8 @@ export const runSimulation: RunSimulation = (scenario: Scenario, options?: Simul
           stops: [],
           endClock: 0,
           miles: 0,
+          onSiteHours: 0,
+          travelHours: 0,
         }));
     }
     // 8. Finance.

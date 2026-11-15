@@ -172,6 +172,7 @@ describe('§8.6–8.9 small stochastic company', () => {
   it('§8.9 no recommended candidate or plan violates a constraint when re-simulated', () => {
     const company = sc.company;
     const baseMissed = base.reduce((s, r) => s + r.totals.missedJobRate, 0) / K;
+    const baseCust = base.reduce((s, r) => s + r.totals.endActiveCustomers, 0) / K;
     const checked = [...result.candidates.filter((c) => c.recommended), ...(result.bestPlan ? [result.bestPlan] : [])];
     expect(checked.length).toBeGreaterThan(0);
     for (const c of checked) {
@@ -194,6 +195,9 @@ describe('§8.6–8.9 small stochastic company', () => {
         missed += r.totals.missedJobRate / K;
       });
       expect(missed, c.id).toBeLessThanOrEqual(Math.max(0.05, baseMissed + 0.005) + 1e-12);
+      // §5 customer-loss guard (added with the O3 contract amendment): default 10%.
+      const endCust = runs.reduce((s, r) => s + r.totals.endActiveCustomers, 0) / K;
+      expect(endCust, c.id).toBeGreaterThanOrEqual(0.9 * baseCust);
       // Recommended means improvement in at least 70% of seeds.
       const better = runs.filter((r, i) => r.totals.income.netProfit > base[i].totals.income.netProfit).length;
       expect(better / K, c.id).toBeGreaterThanOrEqual(0.7);

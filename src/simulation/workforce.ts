@@ -57,7 +57,7 @@ export function hireEmployee(st: SimState, ctx: DayCtx, h: HireInput): EmpS {
   };
   st.employees.push(e);
   ctx.inc.hiringCosts += st.company.workforce.hiringCostPerHire;
-  st.events.push({ day: ctx.day, type: 'employee-hired', employeeId: e.id, crewId: e.crewId });
+  st.events.push({ day: ctx.day, type: 'employee-hired', employeeId: e.id, crewId: e.crewId, name: e.name });
   return e;
 }
 

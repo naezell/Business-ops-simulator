@@ -11,6 +11,7 @@ import { mean } from './evaluate';
 export const DEFAULT_MIN_CASH_FLOOR = 0;
 export const DEFAULT_MAX_MISSED_JOB_RATE = 0.05;
 export const DEFAULT_MIN_PROBABILITY_OF_IMPROVEMENT = 0.7;
+export const DEFAULT_MAX_CUSTOMER_LOSS_FRACTION = 0.1;
 /** A plan may raise the missed-job rate by at most this much over the baseline rate. */
 export const MISSED_RATE_TOLERANCE = 0.005;
 /**
@@ -98,7 +99,13 @@ export function staticReasons(company: CompanyConfig, actions: PlannedAction[]):
 export interface ResolvedConstraints {
   minCashFloor: number;
   maxMissedJobRate: number;
+  maxCustomerLossFraction: number;
   minProbabilityOfImprovement: number;
+}
+
+/** Fewest seed-mean ending active customers a plan may leave: (1 − maxLoss) × baseline mean. */
+export function minEndCustomers(baselineMeanEndCustomers: number, maxCustomerLossFraction: number): number {
+  return (1 - maxCustomerLossFraction) * baselineMeanEndCustomers;
 }
 
 /** Reasons the simulated runs violate a constraint; `runs[i]` is paired with `base[i]`. */
@@ -143,6 +150,17 @@ export function simulatedReasons(runs: RunSummary[], base: RunSummary[], c: Reso
   const cap = Math.max(c.maxMissedJobRate, baseMissed + MISSED_RATE_TOLERANCE);
   if (missed > cap) {
     reasons.push(`Missed-job rate rises to ${fmtPct(missed)}, above the allowed ${fmtPct(cap)}.`);
+  }
+
+  const endCust = mean(runs.map((r) => r.endActiveCustomers));
+  const baseCust = mean(base.map((r) => r.endActiveCustomers));
+  const floor = minEndCustomers(baseCust, c.maxCustomerLossFraction);
+  if (endCust < floor) {
+    reasons.push(
+      `Active customers at the end fall to ${Math.round(endCust)} from ${Math.round(baseCust)} ` +
+        `(${fmtPct(baseCust > 0 ? 1 - endCust / baseCust : 0)} fewer), more than the allowed ${fmtPct(c.maxCustomerLossFraction)} loss; ` +
+        `the in-horizon profit would come partly from shrinking the customer base.`,
+    );
   }
   return reasons;
 }

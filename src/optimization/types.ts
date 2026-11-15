@@ -11,6 +11,12 @@ export interface OptimizationConstraints {
   minCashFloor?: number;
   /** A plan may not raise the missed-job rate above max(this, baseline rate). Default 0.05. */
   maxMissedJobRate?: number;
+  /**
+   * A plan may not leave the business with fewer than (1 − this) × the baseline's
+   * ending active customers (seed mean). Guards against "profit" that comes from
+   * shrinking the customer base inside the horizon. Default 0.10.
+   */
+  maxCustomerLossFraction?: number;
   /** Minimum share of seeds in which the plan must beat the baseline to be recommended. Default 0.7. */
   minProbabilityOfImprovement?: number;
 }
@@ -108,6 +114,14 @@ export interface CandidateEvaluation {
   deltaNetProfit: Distribution;
   deltaEndingCash: Distribution;
   deltaRevenue: Distribution;
+  /** Change in active customers at the end of the horizon. Effects on the customer base continue beyond the horizon. */
+  deltaEndCustomers: Distribution;
+  /**
+   * True when the result is driven by behavioural assumptions that are illustrative
+   * rather than measured (price elasticity, price-shock churn, marketing response).
+   * Set for every plan containing a pricing, marketing or service-mix action.
+   */
+  assumptionSensitive: boolean;
   /** Share of seeds where the objective improved. */
   probabilityOfImprovement: number;
   /** Cash required on day 0 (down payments, hiring costs). */
@@ -135,6 +149,7 @@ export interface OptimizationResult {
     minCash: number;
     utilization: number;
     missedJobRate: number;
+    endCustomers: number;
   };
   bottlenecks: Bottleneck[];
   /** Feasible single-action candidates, ranked by mean objective improvement, best first. Includes non-improving ones. */

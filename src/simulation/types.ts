@@ -555,13 +555,18 @@ export interface CrewDayLog {
   /** Crew clock when back at the depot. */
   endClock: number;
   miles: number;
+  /** ADDITIVE (O3): crew clock hours on site today (per crew, not per person). 0 if not deployed. */
+  onSiteHours: number;
+  /** ADDITIVE (O3): crew clock hours travelling today, including per-stop overhead and the return leg. 0 if not deployed. */
+  travelHours: number;
 }
 
 export type SimEvent =
   | { day: number; type: 'vehicle-breakdown'; vehicleId: Id; downDays: number; cost: number }
   | { day: number; type: 'equipment-breakdown'; equipmentId: Id; downDays: number; cost: number }
   | { day: number; type: 'employee-quit'; employeeId: Id }
-  | { day: number; type: 'employee-hired'; employeeId: Id; crewId: Id | null }
+  /** `name` (ADDITIVE, O3): the hire's name, so auto-backfill hires can be displayed. */
+  | { day: number; type: 'employee-hired'; employeeId: Id; crewId: Id | null; name?: string }
   | { day: number; type: 'cash-shortfall'; amount: number }
   | { day: number; type: 'action-applied'; action: Action }
   | { day: number; type: 'action-rejected'; action: Action; reason: string };

@@ -3,6 +3,7 @@ import type {
   CashFlowStatement,
   CompanyConfig,
   CrewStats,
+  EquipmentSpec,
   Id,
   IncomeStatement,
   JobTypeDef,
@@ -10,6 +11,7 @@ import type {
   OpsMetrics,
   Scenario,
   SimEvent,
+  VehicleSpec,
 } from './types';
 import { hashString } from './rng';
 import { dailyDepreciation, dailyFromMonthly, loanPayment, openingBookValue } from './finance/formulas';
@@ -61,6 +63,8 @@ export interface VehicleS {
   mpg: number;
   maintPerMile: number;
   a: AssetS;
+  /** Spec of a vehicle acquired by an action (absent for opening assets); used only by applyActionsAtDayZero. */
+  spec?: VehicleSpec;
 }
 
 export interface EquipS {
@@ -71,6 +75,8 @@ export interface EquipS {
   a: AssetS;
   /** Equipment hours accrued today (scratch). */
   hoursToday: number;
+  /** Spec of an item acquired by an action (absent for opening assets); used only by applyActionsAtDayZero. */
+  spec?: EquipmentSpec;
 }
 
 export interface CrewS {
