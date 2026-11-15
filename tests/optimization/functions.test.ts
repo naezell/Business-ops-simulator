@@ -7,7 +7,9 @@ import {
   conflicts,
   diagnoseBottlenecks,
   distribution,
+  explanationSentences,
   fmtUsd,
+  lineChangePhrase,
   paybackDays,
   seedsFor,
   shareImproved,
@@ -184,6 +186,34 @@ describe('explanation helpers', () => {
     expect(by.interest).toBe(-5);
     expect(d.reduce((s, x) => s + x.delta, 0)).toBeCloseTo(47.5, 12);
     expect(d.map((x) => x.line)).not.toContain('grossProfit');
+  });
+
+  it('line-change phrases agree in number and use readable line names', () => {
+    expect(lineChangePhrase('bad debt', false, true, 125.4)).toBe('bad debt rises by $125');
+    expect(lineChangePhrase('materials', true, false, -3366)).toBe('materials fall by $3,366');
+    expect(lineChangePhrase('hiring costs', true, true, 900)).toBe('hiring costs rise by $900');
+    expect(lineChangePhrase('revenue', false, true, 0.4)).toBe('revenue is about unchanged');
+  });
+
+  it('the net-profit sentence names the two largest cost changes with correct verbs', () => {
+    // Revenue +1,000; direct labor cost +300 (driver −300); bad debt cost +125 (driver −125);
+    // materials cost −50 (driver +50, third largest, left out). Δnet = 1,000 − 300 − 125 + 50 = 625.
+    const base = [summary({ income: income() })];
+    const runs = [summary({ income: income({ revenue: 1000, directLabor: 300, badDebt: 125, materials: -50 }) })];
+    const drivers = computeDrivers(runs, base);
+    const s = explanationSentences({
+      runs,
+      base,
+      drivers,
+      horizonDays: 365,
+      upfront: 0,
+      minCash: 0,
+      payback: null,
+      probabilityOfImprovement: 1,
+      deltaNet: { mean: 625, min: 625, max: 625 },
+    });
+    expect(s[1]).toBe('Net profit changes by +$625 on average: revenue rises by $1,000, and direct labor rises by $300 and bad debt rises by $125.');
+    for (const line of s) expect(line).not.toMatch(/[a-z][A-Z]/); // no camelCase line ids
   });
 
   it('payback = first day from which the mean Δcash stays ≥ 0', () => {

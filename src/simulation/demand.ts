@@ -3,6 +3,7 @@ import type { Id, JobTypeDef, Pricing } from './types';
 import { STREAM, hashString, poissonInverse, rand01, rand01FromPrefix, randPrefix } from './rng';
 import type { CustomerS, DayCtx, JobTypeS, OrderS, SimState } from './state';
 import { oneOffKeysFor } from './state';
+import { SCHEDULE_MAX_P } from './schedule';
 
 /** Tolerance for visit accrual so that k × (1/k) reaches 1 despite float rounding. */
 export const ACCRUAL_EPS = 1e-9;
@@ -147,6 +148,7 @@ export function createOrder(st: SimState, ctx: DayCtx, c: CustomerS, jt: JobType
     remaining: labor,
     materials: d.materialCost * c.sizeFactor,
     createdDay: ctx.day,
+    cancelDay: ctx.day + d.cancelAfterDays,
     status: 'open',
     started: false,
     sector: 0,
@@ -158,6 +160,8 @@ export function createOrder(st: SimState, ctx: DayCtx, c: CustomerS, jt: JobType
 export function churnCustomer(st: SimState, ctx: DayCtx, c: CustomerS): void {
   if (!c.active) return;
   c.active = false;
+  st.activeCustomerCount -= 1;
+  if (c.planIdx >= 0) st.activePlanCounts[c.planIdx] -= 1;
   c.churnedDay = ctx.day;
   ctx.ops.churnedCustomers += 1;
   for (const o of st.open) {
@@ -185,9 +189,8 @@ function churnPrefix(seed: number, c: CustomerS): number {
 }
 
 export function currentPriceIndex(st: SimState): number {
-  // Count per job-type index first (hot path: once per day over every customer), then key by id.
-  const byIdx = new Array<number>(st.jobTypes.length).fill(0);
-  for (const c of st.customers) if (c.active && c.planIdx >= 0) byIdx[c.planIdx] += 1;
+  // Active customers per plan are maintained incrementally (initState, acquisition, churnCustomer).
+  const byIdx = st.activePlanCounts;
   const counts: Record<Id, number> = {};
   for (let i = 0; i < byIdx.length; i++) if (byIdx[i] > 0) counts[st.jobTypes[i].def.id] = byIdx[i];
   return priceIndex(st.company.jobTypes, st.company.pricing, counts);
@@ -200,20 +203,33 @@ export function demandStep(st: SimState, ctx: DayCtx): void {
   const seed = st.seed;
   const pIdx = currentPriceIndex(st);
   const decay = failureDecayFactor(mk.serviceFailureHalfLifeDays);
-  const oneOffs = st.jobTypes.filter((j) => j.def.kind === 'one-off' && j.def.offered);
   // Same draw u at every price: the price factor only scales the threshold (ADR-008).
-  const oneOffP = oneOffs.map((j) =>
-    oneOffDailyProbability(
+  // Day-0 customers' draws below SCHEDULE_MAX_P come pre-computed from st.oneOffTable (bit-identical
+  // to drawing them here, see schedule.ts). pSched[idx] is the p of a type served from the table
+  // (0 = none today). Types with a larger p, and customers acquired during the run, draw directly.
+  const pSched = new Float64Array(st.jobTypes.length);
+  const offered: { jt: JobTypeS; p: number }[] = [];
+  const direct: { jt: JobTypeS; p: number }[] = [];
+  for (const j of st.jobTypes) {
+    if (j.def.kind !== 'one-off' || !j.def.offered) continue;
+    const p = oneOffDailyProbability(
       j.def.annualRatePerCustomer ?? 0,
       j.def.seasonality[m],
       priceMultiplier(st.company.pricing, j.def.id),
       mk.oneOffPriceElasticity,
-    ),
-  );
+    );
+    if (!(p > 0)) continue;
+    offered.push({ jt: j, p });
+    if (p <= SCHEDULE_MAX_P) pSched[j.idx] = p;
+    else direct.push({ jt: j, p });
+  }
   const fresh: OrderS[] = [];
+  const custs = st.customers;
+  const n0 = st.initialCustomers;
 
   // Recurring accrual and one-off arrivals (customers present at start of step).
-  for (const c of st.customers) {
+  for (let ci = 0; ci < custs.length; ci++) {
+    const c = custs[ci];
     if (!c.active) continue;
     c.failure *= decay;
     if (c.planIdx >= 0) {
@@ -228,14 +244,19 @@ export function demandStep(st: SimState, ctx: DayCtx): void {
         }
       }
     }
-    for (let i = 0; i < oneOffs.length; i++) {
-      const p = oneOffP[i];
-      if (!(p > 0)) continue;
-      const u = rand01FromPrefix(c.oneOffKeys[oneOffs[i].idx], day, 0);
-      if (u < p) {
-        // one order per (customer, type, day) at most from this draw
-        fresh.push(createOrder(st, ctx, c, oneOffs[i], 0));
-      }
+    const draw = ci < n0 ? direct : offered;
+    for (let i = 0; i < draw.length; i++) {
+      const { jt, p } = draw[i];
+      const u = rand01FromPrefix(c.oneOffKeys[jt.idx], day, 0);
+      // one order per (customer, type, day) at most from this draw
+      if (u < p) fresh.push(createOrder(st, ctx, c, jt, 0));
+    }
+  }
+  const tb = st.oneOffTable;
+  if (day + 1 < tb.start.length) {
+    for (let k = tb.start[day], end = tb.start[day + 1]; k < end; k++) {
+      const c = custs[tb.cust[k]];
+      if (c.active && tb.us[k] < pSched[tb.jt[k]]) fresh.push(createOrder(st, ctx, c, st.jobTypes[tb.jt[k]], 0));
     }
   }
   fresh.sort(byId);
@@ -301,6 +322,8 @@ export function demandStep(st: SimState, ctx: DayCtx): void {
         oneOffKeys: oneOffKeysFor(seed, id, st.jobTypes),
         churnPrefix: NaN,
       });
+      st.activeCustomerCount += 1;
+      if (planIdx >= 0) st.activePlanCounts[planIdx] += 1;
       ctx.ops.newCustomers += 1;
     }
   }
@@ -314,12 +337,23 @@ export function demandStep(st: SimState, ctx: DayCtx): void {
     // Every hazard is clamped to at most hMax, so a draw >= hMax can never churn: skip the pow() then.
     // The draw is counter-based, so computing it unconditionally changes no other draw.
     const hMax = dailyHazardFromMonthly(0.5);
-    for (const c of st.customers) {
-      if (!c.active) continue;
-      const u = rand01FromPrefix(churnPrefix(seed, c), day, 0);
-      if (u >= hMax) continue;
+    const tryChurn = (c: CustomerS, u: number) => {
+      if (u >= hMax) return;
       const h = c.failure === 0 ? h0 : dailyHazardFromMonthly(clamp(k * (1 + w * c.failure), 0, 0.5));
       if (h > 0 && u < h) churnCustomer(st, ctx, c);
+    };
+    // Day-0 customers in list order from the pre-drawn table (draws < CHURN_SCHEDULE_MAX_U ≥ hMax),
+    // then customers acquired since (including today), drawn directly: same order as one loop.
+    const ct = st.churnTable;
+    if (day + 1 < ct.start.length) {
+      for (let q = ct.start[day], end = ct.start[day + 1]; q < end; q++) {
+        const c = custs[ct.cust[q]];
+        if (c.active) tryChurn(c, ct.us[q]);
+      }
+    }
+    for (let ci = n0; ci < custs.length; ci++) {
+      const c = custs[ci];
+      if (c.active) tryChurn(c, rand01FromPrefix(churnPrefix(seed, c), day, 0));
     }
   }
 

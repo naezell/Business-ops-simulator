@@ -5,7 +5,7 @@
  * Nothing here produces a business number the engine did not already produce; the only
  * arithmetic is sums, differences and ratios of engine fields for presentation.
  */
-import { priceMultiplier } from '@/simulation';
+import { applyActionsAtDayZero, priceMultiplier } from '@/simulation';
 import type {
   Action,
   AcquisitionMethod,
@@ -152,183 +152,100 @@ const tag = (origin: Origin, draftIndex: number): Tagged => ({
   removedOrigin: null,
 });
 
-function financingFor(method: AcquisitionMethod, price: number, leaseMonthly: number, newLoan: CompanyConfig['finance']['newLoan']): Financing {
-  if (method === 'cash') return { kind: 'owned' };
-  if (method === 'lease') return { kind: 'lease', monthlyPayment: leaseMonthly };
-  return {
-    kind: 'loan',
-    balance: price * (1 - newLoan.downPaymentFraction),
-    annualRate: newLoan.annualRate,
-    monthsRemaining: newLoan.termMonths,
-  };
+/** Index of the action that created an item, from the engine's id scheme (`h-d{day}-{i}-{k}`, `a-d{day}-{i}-{k}`, `crew-d{day}-{i}`). */
+function creatorIndex(id: Id): number {
+  const m = /^(?:h|a)-d\d+-(\d+)-\d+$/.exec(id) ?? /^crew-d\d+-(\d+)$/.exec(id);
+  return m ? Number(m[1]) : -1;
+}
+
+/** Same list with removal actions replaced by a no-op at the same index (keeps every engine id). */
+function withoutRemovals(actions: PlannedAction[]): PlannedAction[] {
+  return actions.map((pa) =>
+    pa.action.type === 'remove-employee' || pa.action.type === 'remove-crew' ? { day: pa.day, action: { type: 'set-policy', patch: {} } } : pa,
+  );
 }
 
 /**
- * What the roster, pricing and policies look like after `adopted` then `draft` actions, mirroring
- * the engine's id scheme and rules for display only. The engine remains the source of every number.
+ * What the roster, pricing and policies look like after `adopted` then `draft` actions, for display.
+ * A thin layer over the engine's `applyActionsAtDayZero` (same rules, ids and rejections); it only adds
+ * origin tags and keeps removed items listed (marked removed) so the UI can show and undo removals.
  */
 export function projectCompany(company: CompanyConfig, adopted: PlannedAction[], draft: PlannedAction[]): Projection {
-  const p: Projection = {
-    employees: company.employees.map((e) => ({ ...e, ...tag('base', -1) })),
-    crews: company.crews.map((c) => ({ ...c, ...tag('base', -1) })),
-    vehicles: company.vehicles.map((v) => ({ id: v.id, name: v.name, seats: v.seats, mpg: v.mpg, asset: v.asset, ...tag('base', -1) })),
-    equipment: company.equipment.map((e) => ({
-      id: e.id,
-      name: e.name,
-      equipmentTypeId: e.equipmentTypeId,
-      crewId: e.crewId,
-      asset: e.asset,
-      ...tag('base', -1),
-    })),
-    pricing: { globalMultiplier: company.pricing.globalMultiplier, byJobType: { ...company.pricing.byJobType } },
-    policies: { ...company.policies },
-    marketingSpend: company.market.marketingMonthlySpend,
-    offered: Object.fromEntries(company.jobTypes.map((j) => [j.id, j.offered])),
-  };
-  const nl = company.finance.newLoan;
   const all = [...adopted, ...draft];
-  const crewActive = (id: Id) => p.crews.find((c) => c.id === id && !c.removed);
+  const full = applyActionsAtDayZero(company, all);
+  // Everything that ever existed: the same actions with removals disabled.
+  const kept = all.some((pa) => pa.action.type === 'remove-employee' || pa.action.type === 'remove-crew')
+    ? applyActionsAtDayZero(company, withoutRemovals(all)).company
+    : full.company;
+  const rejected = new Set(full.rejected.map((r) => r.index));
+  const baseIds = new Set<Id>([...company.employees, ...company.crews, ...company.vehicles, ...company.equipment].map((x) => x.id));
 
-  all.forEach((pa, i) => {
-    const origin: Origin = i < adopted.length ? 'adopted' : 'draft';
-    const di = origin === 'draft' ? i - adopted.length : -1;
-    const a = pa.action;
-    const d = pa.day;
-    switch (a.type) {
-      case 'hire-employee': {
-        if (!crewActive(a.crewId)) break;
-        const id = `h-d${d}-${i}-0`;
-        p.employees.push({
-          id,
-          name: a.hire.name ?? 'New hire',
-          hourlyWage: a.hire.hourlyWage,
-          skill: a.hire.skill,
-          productivity: a.hire.productivity,
-          crewId: a.crewId,
-          tenureDays: 0,
-          ...tag(origin, di),
-        });
-        break;
-      }
-      case 'remove-employee': {
-        const e = p.employees.find((x) => x.id === a.employeeId && !x.removed);
-        if (e) Object.assign(e, { removed: true, removedByDraftIndex: di, removedOrigin: origin });
-        break;
-      }
-      case 'add-crew': {
-        const crewId = `crew-d${d}-${i}`;
-        const vid = `a-d${d}-${i}-0`;
-        const v = a.vehicle.spec;
-        p.vehicles.push({
-          id: vid,
-          name: v.name,
-          seats: v.seats,
-          mpg: v.mpg,
-          asset: {
-            purchasePrice: v.purchasePrice,
-            usefulLifeYears: v.usefulLifeYears,
-            salvageValue: v.salvageValue,
-            ageYears: 0,
-            financing: financingFor(a.vehicle.method, v.purchasePrice, v.leaseMonthly, nl),
-          },
-          ...tag(origin, di),
-        });
-        p.crews.push({ id: crewId, name: a.name, vehicleId: vid, ...tag(origin, di) });
-        a.equipment.forEach((e, k) =>
-          p.equipment.push({
-            id: `a-d${d}-${i}-${k + 1}`,
-            name: e.spec.name,
-            equipmentTypeId: e.spec.equipmentTypeId,
-            crewId,
-            asset: {
-              purchasePrice: e.spec.purchasePrice,
-              usefulLifeYears: e.spec.usefulLifeYears,
-              salvageValue: e.spec.salvageValue,
-              ageYears: 0,
-              financing: financingFor(e.method, e.spec.purchasePrice, e.spec.leaseMonthly, nl),
-            },
-            ...tag(origin, di),
-          }),
-        );
-        a.hires.forEach((h, k) =>
-          p.employees.push({
-            id: `h-d${d}-${i}-${k}`,
-            name: h.name ?? 'New hire',
-            hourlyWage: h.hourlyWage,
-            skill: h.skill,
-            productivity: h.productivity,
-            crewId,
-            tenureDays: 0,
-            ...tag(origin, di),
-          }),
-        );
-        break;
-      }
-      case 'remove-crew': {
-        const c = crewActive(a.crewId);
-        if (!c) break;
-        Object.assign(c, { removed: true, removedByDraftIndex: di, removedOrigin: origin });
-        for (const e of p.employees) {
-          if (!e.removed && e.crewId === c.id) Object.assign(e, { removed: true, removedByDraftIndex: di, removedOrigin: origin });
-        }
-        for (const it of p.equipment) if (it.crewId === c.id) it.crewId = null;
-        break;
-      }
-      case 'acquire-vehicle': {
-        const c = a.crewId === null ? null : crewActive(a.crewId);
-        if (a.crewId !== null && !c) break;
-        const id = `a-d${d}-${i}-0`;
-        p.vehicles.push({
-          id,
-          name: a.spec.name,
-          seats: a.spec.seats,
-          mpg: a.spec.mpg,
-          asset: {
-            purchasePrice: a.spec.purchasePrice,
-            usefulLifeYears: a.spec.usefulLifeYears,
-            salvageValue: a.spec.salvageValue,
-            ageYears: 0,
-            financing: financingFor(a.method, a.spec.purchasePrice, a.spec.leaseMonthly, nl),
-          },
-          ...tag(origin, di),
-        });
-        if (c && (c.vehicleId === null || !p.vehicles.some((v) => v.id === c.vehicleId))) c.vehicleId = id;
-        break;
-      }
-      case 'acquire-equipment': {
-        if (a.crewId !== null && !crewActive(a.crewId)) break;
-        p.equipment.push({
-          id: `a-d${d}-${i}-0`,
-          name: a.spec.name,
-          equipmentTypeId: a.spec.equipmentTypeId,
-          crewId: a.crewId,
-          asset: {
-            purchasePrice: a.spec.purchasePrice,
-            usefulLifeYears: a.spec.usefulLifeYears,
-            salvageValue: a.spec.salvageValue,
-            ageYears: 0,
-            financing: financingFor(a.method, a.spec.purchasePrice, a.spec.leaseMonthly, nl),
-          },
-          ...tag(origin, di),
-        });
-        break;
-      }
-      case 'set-price':
-        if (a.jobTypeId === 'all') p.pricing.globalMultiplier = a.multiplier;
-        else p.pricing.byJobType[a.jobTypeId] = a.multiplier;
-        break;
-      case 'set-policy':
-        Object.assign(p.policies, a.patch);
-        break;
-      case 'set-marketing-spend':
-        p.marketingSpend = a.monthlySpend;
-        break;
-      case 'set-job-type-offered':
-        p.offered[a.jobTypeId] = a.offered;
-        break;
-    }
+  const originOf = (id: Id): Tagged => {
+    if (baseIds.has(id)) return tag('base', -1);
+    const i = creatorIndex(id);
+    return i >= adopted.length ? tag('draft', i - adopted.length) : tag('adopted', -1);
+  };
+  /** Marks `t` removed by the first applied removal action matching `hit`. */
+  const markRemoved = (t: Tagged, hit: (a: Action) => boolean): void => {
+    const i = all.findIndex((pa, k) => !rejected.has(k) && hit(pa.action));
+    const origin: Origin = i >= adopted.length ? 'draft' : 'adopted';
+    Object.assign(t, { removed: true, removedByDraftIndex: origin === 'draft' ? i - adopted.length : -1, removedOrigin: origin });
+  };
+
+  // Items created by an action the engine rejects in the real list (possible only with removals disabled) are dropped.
+  const created = (id: Id) => !rejected.has(creatorIndex(id));
+  const activeCrewIds = new Set(full.company.crews.map((c) => c.id));
+  const crews: PCrew[] = kept.crews.filter((c) => created(c.id)).map((c) => {
+    const t: PCrew = { id: c.id, name: c.name, vehicleId: c.vehicleId, ...originOf(c.id) };
+    if (!activeCrewIds.has(c.id)) markRemoved(t, (a) => a.type === 'remove-crew' && a.crewId === c.id);
+    const now = full.company.crews.find((x) => x.id === c.id);
+    if (now) t.vehicleId = now.vehicleId;
+    return t;
   });
-  return p;
+
+  const activeEmployeeIds = new Set(full.company.employees.map((e) => e.id));
+  const employees: PEmployee[] = kept.employees.filter((e) => created(e.id)).map((e) => {
+    const t: PEmployee = {
+      id: e.id,
+      // The engine names an unnamed hire by its id.
+      name: !baseIds.has(e.id) && e.name === e.id ? 'New hire' : e.name,
+      hourlyWage: e.hourlyWage,
+      skill: e.skill,
+      productivity: e.productivity,
+      crewId: e.crewId,
+      tenureDays: e.tenureDays,
+      ...originOf(e.id),
+    };
+    if (!activeEmployeeIds.has(e.id)) {
+      markRemoved(
+        t,
+        (a) => (a.type === 'remove-employee' && a.employeeId === e.id) || (a.type === 'remove-crew' && a.crewId === e.crewId),
+      );
+    }
+    return t;
+  });
+
+  const vehicles: PVehicle[] = full.company.vehicles.map((v) => ({ id: v.id, name: v.name, seats: v.seats, mpg: v.mpg, asset: v.asset, ...originOf(v.id) }));
+  const equipment: PEquipment[] = full.company.equipment.map((e) => ({
+    id: e.id,
+    name: e.name,
+    equipmentTypeId: e.equipmentTypeId,
+    crewId: e.crewId,
+    asset: e.asset,
+    ...originOf(e.id),
+  }));
+
+  const fc = full.company;
+  return {
+    employees,
+    crews,
+    vehicles,
+    equipment,
+    pricing: { globalMultiplier: fc.pricing.globalMultiplier, byJobType: { ...fc.pricing.byJobType } },
+    policies: { ...fc.policies },
+    marketingSpend: fc.market.marketingMonthlySpend,
+    offered: Object.fromEntries(fc.jobTypes.map((j) => [j.id, j.offered])),
+  };
 }
 
 export function describeFinancing(f: Financing): string {
@@ -531,7 +448,7 @@ export function timelineEvents(r: SimulationResult, nameOf: (id: Id) => string):
 
 export interface CrewDayView {
   log: CrewDayLog;
-  /** Crew clock hours, from the stops and end clock the engine logged. */
+  /** Crew clock hours as logged by the engine (CrewDayLog.onSiteHours / travelHours). */
   onSiteHours: number;
   travelHours: number;
   idleHours: number;
@@ -542,12 +459,10 @@ export interface CrewDayView {
 }
 
 export function crewDayView(log: CrewDayLog, shiftHours: number): CrewDayView {
-  let onSite = 0;
   let revenue = 0;
   let done = 0;
   let partial = 0;
   for (const s of log.stops) {
-    onSite += s.depart - s.arrive;
     revenue += s.revenue;
     if (s.completed) done += 1;
     else partial += 1;
@@ -555,8 +470,9 @@ export function crewDayView(log: CrewDayLog, shiftHours: number): CrewDayView {
   const total = log.endClock;
   return {
     log,
-    onSiteHours: onSite,
-    travelHours: Math.max(0, total - onSite),
+    // Engine-logged crew clock hours (stop overhead counts as travel, §7).
+    onSiteHours: log.onSiteHours,
+    travelHours: log.travelHours,
     idleHours: Math.max(0, shiftHours - total),
     overtimeHours: Math.max(0, total - shiftHours),
     revenue,

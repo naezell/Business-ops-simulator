@@ -608,6 +608,17 @@ export interface SimulationResult {
 export interface SimulationOptions {
   /** 'summary' skips route logs and customer snapshots (used by the optimizer). Default 'full'. */
   detail?: 'summary' | 'full';
+  /**
+   * ADDITIVE (E2, performance only): a cache from `createDrawCache()` shared by several runs.
+   * Results are bit-identical with or without it; it only avoids recomputing random draws that
+   * do not depend on the scenario's decisions (e.g. one-off demand draws per seed and customer).
+   */
+  drawCache?: DrawCache;
+}
+
+/** Opaque cache of pre-computed random draws; create with `createDrawCache()`. */
+export interface DrawCache {
+  readonly kind: 'draw-cache';
 }
 
 /** Public engine entry point, implemented in src/simulation/engine.ts and re-exported from src/simulation/index.ts. */

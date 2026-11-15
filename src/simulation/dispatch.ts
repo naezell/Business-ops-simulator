@@ -295,7 +295,7 @@ export function dispatchDay(st: SimState, ctx: DayCtx, weather: WeatherState, fu
       const dx = o.x - r.x;
       const dy = o.y - r.y;
       const d2 = rf > 0 ? dx * dx + dy * dy : 0; // roadFactor 0: every tIn is equal
-      const urgent = o.createdDay + o.jt.def.cancelAfterDays - day <= 1;
+      const urgent = o.cancelDay - day <= 1;
       if (d2 >= bestD2 && (!urgent || d2 >= bestUD2)) continue;
       if (evalTIn(r, o) < 0) continue;
       if (d2 < bestD2) {

@@ -9,7 +9,7 @@ Status values: **done** (implemented, tested, committed) · **in progress** · *
 |---|---|---|
 | 1 | Architecture, specs, contracts, ADRs, agents, project scaffold | done |
 | 2 | First working landscaping simulation with editable variables and before/after comparison | done |
-| 3 | Optimization: bottlenecks, candidates, constraints, ranking, plan search, explanations | done (engine) · Optimize view: see S5 |
+| 3 | Optimization: bottlenecks, candidates, constraints, ranking, plan search, explanations | done (engine and Optimize view) |
 | 4 | Advanced operations | partly done — see below |
 | 5 | Multi-industry | not started (architecture ready, one industry pack) |
 
@@ -29,6 +29,8 @@ UI and optimizer (engine supports them), growth-strategy comparison, seasonal st
 | Engine | Edge cases: empty company, no crews/employees/vehicle, missing equipment, excess demand, unprofitable pricing, cash shortfall, forced breakdowns, total absence, total rainout, churn collapse, 1-day and mid-week horizons | `tests/simulation/edge-cases.test.ts` |
 | Finance | Every formula as a pure function with hand-calculated tests | `tests/unit/finance-*.test.ts` |
 | Optimizer | Paired multi-seed evaluation, screening, bottlenecks, candidates, constraints, ranking, beam search, drivers, template explanations | `tests/optimization` |
+| Engine | One-off demand responds to price (ADR-008); sample company elasticity 1.5 (illustrative assumption) | `tests/simulation/oneoff-price.test.ts`, `tests/unit/finance-demand.test.ts` |
+| Engine | Cross-run draw tables (`drawCache`) — about 20% faster default optimization (≈ 9 s in bundled Node on the E2 container), results unchanged | `tests/simulation/draw-cache.test.ts` |
 | Data | Landscaping industry pack and calibrated synthetic sample company; parameter metadata with provenance | `tests/unit/landscaping-data.test.ts` |
 | UI | App shell, scenario bar (baseline vs draft), Operations (map, routes, scrubber, crew cards, timeline), Financials (P&L, cash, bridge, job-type profitability), Business (decisions + assumptions with provenance) | browser-verified by Playwright script during development; no automated UI tests in the repo |
 | Infra | Import-boundary test, Web Worker bridge for optimization | `tests/architecture`, `tests/optimization/worker-bridge.test.ts` |

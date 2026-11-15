@@ -183,7 +183,7 @@ export const runSimulation: RunSimulation = (scenario: Scenario, options?: Simul
   }
   const warnings = issues.filter((i) => i.severity === 'warning').map((i) => `${i.path}: ${i.message}`);
   const full = (options?.detail ?? 'full') === 'full';
-  const st = initState(scenario);
+  const st = initState(scenario, options?.drawCache);
   const H = scenario.horizonDays;
   const cal = buildCalendar(st.company.startMonth, H);
 
@@ -257,8 +257,7 @@ export const runSimulation: RunSimulation = (scenario: Scenario, options?: Simul
     // 9. Record.
     let backlogHours = 0;
     for (const o of st.open) backlogHours += o.remaining;
-    let activeCustomers = 0;
-    for (const c of st.customers) if (c.active) activeCustomers += 1;
+    const activeCustomers = st.activeCustomerCount;
     let activeEmployees = 0;
     for (const e of st.employees) if (e.active) activeEmployees += 1;
     days[day] = {

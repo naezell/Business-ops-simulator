@@ -11,16 +11,12 @@ any figure. See [docs/product-vision.md](docs/product-vision.md).
 
 ## Status
 
-**Pre-alpha.** The simulation engine, optimizer and user interface are under
-construction. What exists today:
-
-- Type contracts for the engine and industry packs (`src/simulation/types.ts`,
-  `src/optimization/types.ts`, `src/business/types.ts`).
-- The landscaping industry pack: job types, equipment and vehicle catalogs, hire
-  templates and a synthetic sample company (`src/business/landscaping/`).
-- Import-boundary and data-integrity tests.
-
-Do not expect a working simulation, charts or recommendations yet.
+**Early working version, not deployed.** A complete vertical slice exists for one
+synthetic landscaping company: the deterministic simulation engine, the
+optimizer, and a four-view interface (Operations, Financials, Business,
+Optimize). All sample data is synthetic and all behavioural parameters are
+illustrative assumptions. What is done, what is not, and known limitations are
+tracked in [`docs/development-roadmap.md`](docs/development-roadmap.md).
 
 ## Running
 

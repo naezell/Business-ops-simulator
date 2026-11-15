@@ -9,11 +9,13 @@ import type {
   JobTypeDef,
   JobTypeStats,
   OpsMetrics,
+  DrawCache,
   Scenario,
   SimEvent,
   VehicleSpec,
 } from './types';
-import { STREAM, hashString, randPrefix } from './rng';
+import { hashString } from './rng';
+import { initialChurnTable, initialOneOffTable, oneOffPrefix, type DrawTable } from './schedule';
 import { dailyDepreciation, dailyFromMonthly, loanPayment, openingBookValue } from './finance/formulas';
 
 export interface EmpS {
@@ -127,6 +129,8 @@ export interface OrderS {
   remaining: number;
   materials: number;
   createdDay: number;
+  /** createdDay + cancelAfterDays (cached for the routing hot loop). */
+  cancelDay: number;
   status: OrderStatus;
   started: boolean;
   /** Zoned routing sector (scratch). */
@@ -188,6 +192,18 @@ export interface SimState {
   backfillCount: Map<Id, number>;
   bal: Balances;
   events: SimEvent[];
+  /** Optional cross-run draw cache (SimulationOptions.drawCache). */
+  drawCache: DrawCache | null;
+  /** Active customers (maintained by initState, acquisition and churnCustomer). */
+  activeCustomerCount: number;
+  /** Active customers per recurring plan, by job type index (maintained like activeCustomerCount). */
+  activePlanCounts: number[];
+  /** Number of day-0 customers: st.customers[0 … initialCustomers−1] (the list only grows). */
+  initialCustomers: number;
+  /** Day-0 customers' one-off draws below SCHEDULE_MAX_P, by day (schedule.ts). */
+  oneOffTable: DrawTable;
+  /** Day-0 customers' churn draws below CHURN_SCHEDULE_MAX_U, by day (schedule.ts). */
+  churnTable: DrawTable;
 }
 
 export function newCrewStats(id: Id, name: string): CrewStats {
@@ -262,12 +278,12 @@ export function openingAsset(id: Id, f: FinanceLike): AssetS {
 export function oneOffKeysFor(seed: number, customerId: Id, jobTypes: JobTypeS[]): Int32Array {
   const out = new Int32Array(jobTypes.length);
   for (const jt of jobTypes) {
-    if (jt.def.kind === 'one-off') out[jt.idx] = randPrefix(seed, STREAM.ONEOFF_DEMAND, hashString(customerId + ':' + jt.def.id));
+    if (jt.def.kind === 'one-off') out[jt.idx] = oneOffPrefix(seed, customerId, jt.def.id);
   }
   return out;
 }
 
-export function initState(scenario: Scenario): SimState {
+export function initState(scenario: Scenario, drawCache?: DrawCache | null): SimState {
   const company = structuredClone(scenario.company);
   const jobTypes: JobTypeS[] = company.jobTypes.map((def, idx) => ({ def, idx, stats: newJobTypeStats(def.id) }));
   const jtById = new Map(jobTypes.map((j) => [j.def.id, j]));
@@ -327,7 +343,10 @@ export function initState(scenario: Scenario): SimState {
     nfa += a.book;
     if (a.loan) loanBalance += a.loan.balance;
   }
-  return {
+  const customerIds = customers.map((c) => c.id);
+  const activePlanCounts = new Array<number>(jobTypes.length).fill(0);
+  for (const c of customers) if (c.planIdx >= 0) activePlanCounts[c.planIdx] += 1;
+  const st: SimState = {
     seed: scenario.seed,
     horizon: scenario.horizonDays,
     company,
@@ -344,7 +363,20 @@ export function initState(scenario: Scenario): SimState {
     backfillCount: new Map(),
     bal: { cash: company.finance.startingCash, ar: 0, nfa, accruedPayroll: 0, loanBalance, loc: 0 },
     events: [],
+    drawCache: drawCache ?? null,
+    activeCustomerCount: customers.length,
+    activePlanCounts,
+    initialCustomers: customers.length,
+    oneOffTable: initialOneOffTable(
+      scenario.seed,
+      customerIds,
+      jobTypes.filter((j) => j.def.kind === 'one-off').map((j) => ({ idx: j.idx, id: j.def.id })),
+      scenario.horizonDays,
+      drawCache,
+    ),
+    churnTable: initialChurnTable(scenario.seed, customerIds, scenario.horizonDays, drawCache),
   };
+  return st;
 }
 
 export function allAssets(st: SimState): AssetS[] {

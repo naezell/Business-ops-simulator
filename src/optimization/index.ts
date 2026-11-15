@@ -9,7 +9,7 @@ export type { CandidateDef, GenerationContext } from './candidates';
 export { upfrontCash, staticReasons, simulatedReasons, minEndCustomers, DEFAULT_MAX_CUSTOMER_LOSS_FRACTION } from './constraints';
 export type { ResolvedConstraints } from './constraints';
 export { diagnoseBottlenecks, cashSeverity } from './bottlenecks';
-export { computeDrivers, paybackDays, fmtUsd, DRIVER_LINES, assumptionSentence } from './explain';
+export { computeDrivers, paybackDays, fmtUsd, DRIVER_LINES, assumptionSentence, explanationSentences, lineChangePhrase } from './explain';
 export {
   rankEvaluations,
   planPool,

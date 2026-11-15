@@ -68,6 +68,8 @@ as part of the spec; fold them into `docs/simulation-engine.md` /
 14. `jobTypeStats.fuel` = equipment fuel + vehicle fuel of the inbound leg; labor uses on-site + inbound time at wage × (1 + burden).
 15. Validation errors additionally cover: rates > 1 (absence, turnover, bad debt, jitter, down payment), assets without useful life, `mpg`/`avgSpeedMph` ≤ 0, `payPeriodDays` < 1, a customer plan that is not a recurring type, negative action days. Equipment-type ids cannot be validated because `CompanyConfig` carries no equipment-type list.
 16. Additive contract fields: `OpsMetrics.jobsWithdrawn`, `CrewDayLog.equipmentIds`.
+17. One-off price response (ADR-008, task E2): `oneOffDailyProbability(rate, seasonality, P, elasticity)`; the factor is exactly 1 (no multiplication) when the elasticity is missing/0, `P = 1`, or `P ≤ 0`/non-finite, so existing scenarios are bit-identical. Negative elasticities pass validation (as for the other `*Elasticity` fields) and simply raise arrivals with price.
+18. Performance (E2, no behaviour change): the day-0 customers' one-off draws below `SCHEDULE_MAX_P = 0.02` and churn draws below `CHURN_SCHEDULE_MAX_U = 0.03` (≥ the clamped daily hazard 0.0228) are pre-computed into per-day tables (`src/simulation/schedule.ts`); a type whose p exceeds 0.02 on a day, and customers acquired during the run, are drawn directly. Additive contract: `SimulationOptions.drawCache` (`createDrawCache()`), which shares those tables between runs; the optimizer's `Evaluator` uses one per request. Results with and without the cache are bit-identical (tested).
 
 Open modelling question for you (not urgent): employees with no crew are paid
 the minimum shift every workday, including rainouts. Decide whether unassigned

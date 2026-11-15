@@ -7,22 +7,40 @@ import type { RunSummary } from './evaluate';
 import { mean } from './evaluate';
 import type { ProfitDriver } from './types';
 
-/** IncomeStatement lines that are not subtotals, with their sign in net profit. */
-export const DRIVER_LINES: { line: keyof IncomeStatement; sign: 1 | -1; label: string }[] = [
-  { line: 'revenue', sign: 1, label: 'revenue' },
-  { line: 'directLabor', sign: -1, label: 'wages' },
-  { line: 'payrollBurden', sign: -1, label: 'payroll burden' },
-  { line: 'materials', sign: -1, label: 'materials' },
-  { line: 'fuel', sign: -1, label: 'fuel' },
-  { line: 'maintenance', sign: -1, label: 'maintenance and repairs' },
-  { line: 'equipmentLeases', sign: -1, label: 'lease payments' },
-  { line: 'overhead', sign: -1, label: 'overhead' },
-  { line: 'marketing', sign: -1, label: 'marketing' },
-  { line: 'hiringCosts', sign: -1, label: 'hiring costs' },
-  { line: 'badDebt', sign: -1, label: 'bad debt' },
-  { line: 'depreciation', sign: -1, label: 'depreciation' },
-  { line: 'interest', sign: -1, label: 'interest' },
+/**
+ * IncomeStatement lines that are not subtotals, with their sign in net profit, a human-readable
+ * label and whether the label is grammatically plural ("materials rise", "bad debt rises").
+ */
+export const DRIVER_LINES: { line: keyof IncomeStatement; sign: 1 | -1; label: string; plural: boolean }[] = [
+  { line: 'revenue', sign: 1, label: 'revenue', plural: false },
+  { line: 'directLabor', sign: -1, label: 'direct labor', plural: false },
+  { line: 'payrollBurden', sign: -1, label: 'payroll burden', plural: false },
+  { line: 'materials', sign: -1, label: 'materials', plural: true },
+  { line: 'fuel', sign: -1, label: 'fuel', plural: false },
+  { line: 'maintenance', sign: -1, label: 'maintenance and repairs', plural: true },
+  { line: 'equipmentLeases', sign: -1, label: 'lease payments', plural: true },
+  { line: 'overhead', sign: -1, label: 'overhead', plural: false },
+  { line: 'marketing', sign: -1, label: 'marketing', plural: false },
+  { line: 'hiringCosts', sign: -1, label: 'hiring costs', plural: true },
+  { line: 'badDebt', sign: -1, label: 'bad debt', plural: false },
+  { line: 'depreciation', sign: -1, label: 'depreciation', plural: false },
+  { line: 'interest', sign: -1, label: 'interest', plural: false },
 ];
+
+/** "fooBar" → "foo bar" (fallback for a line without a label). */
+function humanize(id: string): string {
+  return id.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase();
+}
+
+/**
+ * "<label> rises by $X" / "<label> rise by $X" (plural) / "... falls/fall by ..."; a change that
+ * rounds to $0 reads "<label> is/are about unchanged". `up` = the line's amount increases.
+ */
+export function lineChangePhrase(label: string, plural: boolean, up: boolean, amount: number): string {
+  if (Math.round(Math.abs(amount)) === 0) return `${label} ${plural ? 'are' : 'is'} about unchanged`;
+  const verb = up ? (plural ? 'rise' : 'rises') : plural ? 'fall' : 'falls';
+  return `${label} ${verb} by ${fmtUsd(Math.abs(amount))}`;
+}
 
 /** Whole dollars with thousands separators, e.g. -$12,345. Locale-independent. */
 export function fmtUsd(x: number): string {
@@ -103,15 +121,19 @@ export function explanationSentences(x: ExplainInput): string[] {
   const revenue = x.drivers.find((d) => d.line === 'revenue')?.delta ?? 0;
   const costs = x.drivers
     .filter((d) => d.line !== 'revenue' && Math.round(d.delta) !== 0)
-    .map((d) => ({ ...d, label: DRIVER_LINES.find((l) => l.line === d.line)?.label ?? d.line }))
+    .map((d) => {
+      const meta = DRIVER_LINES.find((l) => l.line === d.line);
+      return { ...d, label: meta?.label ?? humanize(d.line), plural: meta?.plural ?? false };
+    })
     .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta) || (a.line < b.line ? -1 : 1))
     .slice(0, 2);
+  // A cost driver's delta is its effect on net profit: negative = the cost rises.
   const costText =
     costs.length === 0
       ? 'no cost line changes materially'
-      : costs.map((c) => `${c.label} ${c.delta <= 0 ? 'rise' : 'fall'} by ${fmtUsd(Math.abs(c.delta))}`).join(' and ');
+      : costs.map((c) => lineChangePhrase(c.label, c.plural, c.delta < 0, c.delta)).join(' and ');
   out.push(
-    `Net profit changes by ${fmtDelta(x.deltaNet.mean)} on average: revenue ${revenue >= 0 ? 'rises' : 'falls'} by ${fmtUsd(Math.abs(revenue))}, and ${costText}.`,
+    `Net profit changes by ${fmtDelta(x.deltaNet.mean)} on average: ${lineChangePhrase('revenue', false, revenue >= 0, revenue)}, and ${costText}.`,
   );
 
   const improved = Math.round(x.probabilityOfImprovement * k);

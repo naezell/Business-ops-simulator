@@ -4,7 +4,7 @@
  * Every run goes through `Evaluator.run`, which caches per-seed summaries so a
  * baseline or a candidate is never simulated twice on the same seed.
  */
-import { runSimulation } from '../simulation';
+import { createDrawCache, runSimulation } from '../simulation';
 import type {
   Id,
   IncomeStatement,
@@ -137,6 +137,8 @@ export class Evaluator {
   readonly scenario: Scenario;
   simulationsRun = 0;
   private readonly cache = new Map<string, RunSummary>();
+  /** Decision-independent random draws shared by every run of this request (results unchanged). */
+  private readonly draws = createDrawCache();
   private readonly onRun?: () => void;
 
   constructor(scenario: Scenario, onRun?: () => void) {
@@ -150,7 +152,7 @@ export class Evaluator {
     const hit = this.cache.get(cacheKey);
     if (hit) return hit;
     const sc: Scenario = { ...this.scenario, seed, actions: [...this.scenario.actions, ...actions] };
-    const summary = summarizeRun(runSimulation(sc, { detail: 'summary' }));
+    const summary = summarizeRun(runSimulation(sc, { detail: 'summary', drawCache: this.draws }));
     this.simulationsRun += 1;
     this.cache.set(cacheKey, summary);
     this.onRun?.();
