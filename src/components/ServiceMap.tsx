@@ -1,6 +1,8 @@
-import { useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import type { CrewDayLog, CustomerSnapshot, Id, RouteStop } from '@/simulation';
 import { hours, money, num } from '@/services/format';
+import { crewStateAt, type CrewPlayState } from '@/services/playback';
+import type { PlaybackClock } from './PlaybackControls';
 import { cx } from './ui';
 
 export const CREW_COLORS = ['#2b5f8a', '#c2662d', '#7a4fa3', '#2a8c7f', '#b0407f', '#8a7a1f', '#4a6b2a', '#a8322a'];
@@ -14,6 +16,8 @@ interface Props {
   jobTypeName: (id: Id) => string;
   planIds: Id[];
   planName: (id: Id) => string;
+  /** When given, crew markers follow this clock (time-of-day playback). */
+  clock?: PlaybackClock;
 }
 
 const PLAN_FILLS = ['#51675b', '#9fb5a8', '#6d6a8c'];
@@ -24,7 +28,7 @@ interface ActiveStop {
   stop: RouteStop;
 }
 
-export function ServiceMap({ customers, logs, day, crewColor, crewName, jobTypeName, planIds, planName }: Props) {
+export const ServiceMap = memo(function ServiceMap({ customers, logs, day, crewColor, crewName, jobTypeName, planIds, planName, clock }: Props) {
   const [active, setActive] = useState<ActiveStop | null>(null);
 
   // Fixed extent from every customer ever present, so the picture does not jump while scrubbing.
@@ -176,6 +180,8 @@ export function ServiceMap({ customers, logs, day, crewColor, crewName, jobTypeN
           }),
         )}
 
+        {clock && <CrewMarkers clock={clock} logs={deployed} crewColor={crewColor} px={px} py={py} r={r} />}
+
         {/* depot */}
         <rect x={px(0) - r * 2} y={py(0) - r * 2} width={r * 4} height={r * 4} fill="#1d2420" />
         <text x={px(0) + r * 3} y={py(0) + r * 1} fontSize={r * 2.4} fontWeight={600} fill="#1d2420">
@@ -234,8 +240,88 @@ export function ServiceMap({ customers, logs, day, crewColor, crewName, jobTypeN
           <span className="inline-block h-0 w-5 border-t-2 border-dashed border-muted" />
           Unfinished stop
         </li>
+        {clock && (
+          <>
+            <li className="flex items-center gap-1.5" title="Crew moving between stops">
+              <svg width="12" height="12" aria-hidden><circle cx="6" cy="6" r="5" fill="#555" stroke="#fff" strokeWidth="1.5" /></svg>
+              Travelling
+            </li>
+            <li className="flex items-center gap-1.5" title="Crew on site">
+              <svg width="12" height="12" aria-hidden><rect x="1" y="1" width="10" height="10" fill="#555" stroke="#fff" strokeWidth="1.5" /></svg>
+              Working
+            </li>
+            <li className="flex items-center gap-1.5" title="Crew heading back to the depot">
+              <svg width="12" height="12" aria-hidden><circle cx="6" cy="6" r="4.5" fill="#fff" stroke="#555" strokeWidth="2" strokeDasharray="3 2" /></svg>
+              Returning
+            </li>
+            <li className="flex items-center gap-1.5" title="Crew back at the depot">
+              <svg width="12" height="12" aria-hidden><circle cx="6" cy="6" r="2.5" fill="#8d968f" /></svg>
+              Idle
+            </li>
+          </>
+        )}
         <li className="num">2-mile rings, {num(customers.length)} customers</li>
       </ul>
     </div>
+  );
+}
+);
+
+/** Crew markers moved by direct attribute writes on every clock tick: no React re-render per frame. */
+function CrewMarkers({
+  clock,
+  logs,
+  crewColor,
+  px,
+  py,
+  r,
+}: {
+  clock: PlaybackClock;
+  logs: CrewDayLog[];
+  crewColor: (id: Id) => string;
+  px: (x: number) => number;
+  py: (y: number) => number;
+  r: number;
+}) {
+  const refs = useRef<Record<string, SVGGElement | null>>({});
+  const pxRef = useRef(px);
+  const pyRef = useRef(py);
+  pxRef.current = px;
+  pyRef.current = py;
+
+  useEffect(() => {
+    const update = (t: number) => {
+      for (const log of logs) {
+        const g = refs.current[log.crewId];
+        if (!g) continue;
+        const p = crewStateAt(log, t);
+        g.setAttribute('transform', `translate(${pxRef.current(p.x)} ${pyRef.current(p.y)})`);
+        if (g.dataset.state !== p.state) {
+          g.dataset.state = p.state;
+          for (const shape of Array.from(g.children) as SVGElement[]) {
+            shape.setAttribute('display', (shape.dataset.for as CrewPlayState).split(',').includes(p.state) ? 'inline' : 'none');
+          }
+        }
+      }
+    };
+    update(clock.t);
+    return clock.subscribe(update);
+  }, [clock, logs]);
+
+  const k = r * 2.4;
+  return (
+    <g style={{ pointerEvents: 'none' }}>
+      {logs.map((log) => {
+        const c = crewColor(log.crewId);
+        return (
+          <g key={log.crewId} ref={(el) => { refs.current[log.crewId] = el; }}>
+            <circle data-for="traveling" r={k} fill={c} stroke="#fff" strokeWidth={1.6} vectorEffect="non-scaling-stroke" />
+            <rect data-for="working" x={-k} y={-k} width={k * 2} height={k * 2} fill={c} stroke="#fff" strokeWidth={1.6} vectorEffect="non-scaling-stroke" display="none" />
+            <circle data-for="returning" r={k * 0.9} fill="#fff" stroke={c} strokeWidth={2.2} strokeDasharray="3 2" vectorEffect="non-scaling-stroke" display="none" />
+            <circle data-for="idle,off" r={k * 0.45} fill="#8d968f" display="none" />
+          </g>
+        );
+      })}
+    </g>
   );
 }
