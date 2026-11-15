@@ -128,6 +128,8 @@ export function dayFeed(
   events: readonly SimEvent[],
   logs: readonly CrewDayLog[],
   nameOf: (id: string) => string,
+  /** Describes the shock with this index in the scenario's shocks list (shock events carry `shockIndex`). */
+  shockText?: (shockIndex: number) => string | undefined,
 ): FeedItem[] {
   const out: FeedItem[] = [];
   for (const log of logs) {
@@ -137,7 +139,8 @@ export function dayFeed(
     const e = raw as Loose;
     if (e.day !== day) continue;
     const cost = numOf(e.cost);
-    const label = str(e.name) ?? str(e.label) ?? str(e.ruleId) ?? str(e.shockId) ?? str(e.id);
+    const shockLabel = numOf(e.shockIndex) !== undefined ? shockText?.(e.shockIndex as number) : undefined;
+    const label = str(e.name) ?? str(e.label) ?? str(e.ruleId) ?? str(e.id);
     switch (e.type) {
       case 'vehicle-breakdown':
       case 'equipment-breakdown': {
@@ -171,10 +174,10 @@ export function dayFeed(
         out.push({ kind: 'rule', text: `Rule fired${label ? `: ${label}` : ''}`, money: numOf(e.cashEffect) ?? numOf(e.amount) });
         break;
       case 'shock-started':
-        out.push({ kind: 'shock-start', text: `Shock started${label ? `: ${label}` : ''}` });
+        out.push({ kind: 'shock-start', text: `Condition started${shockLabel ?? label ? `: ${shockLabel ?? label}` : ''}` });
         break;
       case 'shock-ended':
-        out.push({ kind: 'shock-end', text: `Shock ended${label ? `: ${label}` : ''}` });
+        out.push({ kind: 'shock-end', text: `Condition ended${shockLabel ?? label ? `: ${shockLabel ?? label}` : ''}` });
         break;
       case 'asset-disposed': {
         const proceeds = numOf(e.proceeds) ?? numOf(e.amount);

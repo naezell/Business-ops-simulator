@@ -4,6 +4,7 @@ import { Button, Disclosure, Notice } from '@/components/ui';
 import { CrewsSection, FleetSection } from '@/components/business/PeopleSection';
 import { MarketingSection, PricingSection, SchedulingSection } from '@/components/business/DecisionsSection';
 import { PlanTimeline } from '@/components/business/PlanTimeline';
+import { ConditionsPanel } from '@/components/conditions/ConditionsPanel';
 import { AssumptionsSection } from '@/components/business/AssumptionsSection';
 
 const SECTIONS = [
@@ -13,6 +14,7 @@ const SECTIONS = [
   { id: 'sec-pricing', label: 'Pricing and services' },
   { id: 'sec-scheduling', label: 'Scheduling' },
   { id: 'sec-marketing', label: 'Marketing' },
+  { id: 'sec-conditions', label: 'Conditions' },
   { id: 'sec-assumptions', label: 'Assumptions' },
 ];
 
@@ -74,6 +76,10 @@ export function BusinessPage() {
 
       <SectionHeading id="sec-marketing" title="Marketing" />
       <MarketingSection />
+
+      <div id="sec-conditions" className="scroll-mt-44">
+        <ConditionsPanel />
+      </div>
 
       <div id="sec-assumptions" className="scroll-mt-44">
         <Disclosure

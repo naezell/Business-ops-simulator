@@ -70,3 +70,37 @@ export function monthTicks(startMonth: number, horizonDays: number): MonthTick[]
   for (const d of buildCalendar(startMonth, horizonDays)) if (d.dayOfMonth === 1 || d.day === 0) ticks.push({ day: d.day, label: monthName(d.month) });
   return ticks;
 }
+
+export interface ShockBar {
+  /** Index into the store's shocks list. */
+  index: number;
+  /** Engine days, window [fromDay, toDay) clipped to the horizon. */
+  fromDay: number;
+  toDay: number;
+  /** Sub-row so bars that overlap on screen never cover each other. */
+  row: number;
+}
+
+/**
+ * Bars for the read-only Conditions lane. Windows are clipped to the horizon; shocks that start after it are dropped.
+ * `minPx` is the least width a bar occupies (so a one-day condition stays visible and keeps its row).
+ */
+export function shockBars(shocks: readonly { fromDay: number; toDay: number }[], horizonDays: number, pxPerDay: number, minPx = 28): { bars: ShockBar[]; rows: number } {
+  const items = shocks
+    .map((s, index) => ({ index, fromDay: Math.max(0, s.fromDay), toDay: Math.min(horizonDays, s.toDay) }))
+    .filter((s) => s.toDay > s.fromDay)
+    .sort((a, b) => a.fromDay - b.fromDay || a.index - b.index);
+  const rowEnd: number[] = [];
+  const bars: ShockBar[] = [];
+  for (const s of items) {
+    const x = s.fromDay * pxPerDay;
+    let row = rowEnd.findIndex((end) => end + 2 <= x);
+    if (row < 0) {
+      row = rowEnd.length;
+      rowEnd.push(0);
+    }
+    rowEnd[row] = x + Math.max(minPx, (s.toDay - s.fromDay) * pxPerDay);
+    bars.push({ ...s, row });
+  }
+  return { bars, rows: Math.max(1, rowEnd.length) };
+}

@@ -5,12 +5,12 @@
  * Only decisions and edits are stored, never the company itself: the base company is rebuilt from
  * the industry pack, so improvements to the sample data are not hidden behind a stale copy.
  */
-import type { PlannedAction } from '@/simulation';
+import type { PlannedAction, Shock } from '@/simulation';
 import type { DecisionRule } from '@/simulation/types-twin';
 import type { CompanyPatch } from './derive';
 
 export const STORAGE_KEY = 'business-ops-simulator:state';
-export const STORAGE_VERSION = 2;
+export const STORAGE_VERSION = 3;
 
 export type ViewId = 'operations' | 'financials' | 'business' | 'optimize';
 export const VIEW_IDS: ViewId[] = ['operations', 'financials', 'business', 'optimize'];
@@ -31,6 +31,8 @@ export interface PersistedState {
   draft: DraftPlan;
   /** Facts and assumptions the user edited, applied to baseline and draft alike. */
   patch: CompanyPatch;
+  /** Hypothetical conditions (shocks) applied to baseline and draft alike. Engine days are 0-based. */
+  shocks: Shock[];
   selectedDay: number;
   view: ViewId;
 }
@@ -46,14 +48,35 @@ function isRule(x: unknown): x is DecisionRule {
   return isObj(x) && typeof x.id === 'string' && typeof x.name === 'string' && Array.isArray(x.when) && Array.isArray(x.then);
 }
 
+const WEATHER = ['clear', 'partial', 'rainout'];
+const isWindow = (x: Record<string, unknown>) => Number.isInteger(x.fromDay) && (x.fromDay as number) >= 0 && Number.isInteger(x.toDay) && (x.toDay as number) > (x.fromDay as number);
+
+/** Structural check of a stored shock (ids are checked by the engine's validation when it is simulated). */
+export function isShock(x: unknown): x is Shock {
+  if (!isObj(x) || !isWindow(x)) return false;
+  switch (x.type) {
+    case 'multiplier':
+      return typeof x.target === 'string' && isFiniteNum(x.factor) && x.factor >= 0;
+    case 'outage':
+      return typeof x.assetId === 'string';
+    case 'absence':
+      return Array.isArray(x.employeeIds) && x.employeeIds.every((i) => typeof i === 'string');
+    case 'weather':
+      return typeof x.state === 'string' && WEATHER.includes(x.state);
+    default:
+      return false;
+  }
+}
+
 /**
  * Validates parsed storage data and upgrades older schema versions.
  *  - v1: `draftActions: PlannedAction[]`           -> v2: `draft: { actions, rules: [] }`
+ *  - v2: no shocks                                  -> v3: `shocks: []`
  * Returns null for anything unusable (corrupt, unknown version).
  */
 export function migratePersisted(data: unknown): PersistedState | null {
   if (!isObj(data)) return null;
-  if (data.version !== 1 && data.version !== STORAGE_VERSION) return null;
+  if (data.version !== 1 && data.version !== 2 && data.version !== STORAGE_VERSION) return null;
   if (typeof data.industryId !== 'string') return null;
   if (!isFiniteNum(data.seed) || !isFiniteNum(data.horizonMonths)) return null;
   if (!Array.isArray(data.baselineActions) || !data.baselineActions.every(isPlannedAction)) return null;
@@ -75,6 +98,11 @@ export function migratePersisted(data: unknown): PersistedState | null {
     if (!isFiniteNum(v)) return null;
     patch[k] = v;
   }
+  let shocks: Shock[] = [];
+  if (data.version === 3) {
+    if (!Array.isArray(data.shocks) || !data.shocks.every(isShock)) return null;
+    shocks = data.shocks;
+  }
   const view = VIEW_IDS.includes(data.view as ViewId) ? (data.view as ViewId) : 'operations';
   return {
     version: STORAGE_VERSION,
@@ -84,6 +112,7 @@ export function migratePersisted(data: unknown): PersistedState | null {
     baselineActions: data.baselineActions,
     draft,
     patch,
+    shocks,
     selectedDay: isFiniteNum(data.selectedDay) ? Math.max(0, Math.floor(data.selectedDay)) : 0,
     view,
   };

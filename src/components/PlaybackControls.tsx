@@ -3,6 +3,8 @@ import type { CrewDayLog, Id, SimEvent } from '@/simulation';
 import { clockLabel, crewStateAt, dayEndClock, dayFeed, type CrewPlayState, type FeedKind } from '@/services/playback';
 import { money, signedMoney } from '@/services/format';
 import { Button, Segmented, cx } from './ui';
+import { useStore } from '@/services/store';
+import { shockTitle } from './conditions/shocks';
 
 /**
  * Tiny external clock shared by the controls and the map markers. The markers move by
@@ -177,7 +179,11 @@ export function DayFeed({
   logs: readonly CrewDayLog[];
   nameOf: (id: Id) => string;
 }) {
-  const items = useMemo(() => dayFeed(day, events, logs, nameOf), [day, events, logs, nameOf]);
+  const shocks = useStore((st) => st.shocks);
+  const items = useMemo(
+    () => dayFeed(day, events, logs, nameOf, (i) => (shocks[i] ? shockTitle(shocks[i], nameOf) : undefined)),
+    [day, events, logs, nameOf, shocks],
+  );
   if (items.length === 0) return <p className="text-[13px] text-muted">Nothing notable was recorded on this day.</p>;
   return (
     <ul className="divide-y divide-line text-[13px]">

@@ -2,10 +2,11 @@ import { useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from
 import type { Action, EquipmentSpec, NewHireSpec, PlannedAction, VehicleSpec } from '@/simulation';
 import { useStore } from '@/services/store';
 import { describeAction } from '@/services/derive';
-import { LANES, chipDateLabel, clampDay, dayNumberLabel, laneOf, monthTicks, type LaneId } from '@/services/planTimeline';
+import { LANES, chipDateLabel, clampDay, dayNumberLabel, laneOf, monthTicks, shockBars, type LaneId } from '@/services/planTimeline';
 import { dayLabel, money } from '@/services/format';
 import { Button, Card, Icon, NumberField, cx } from '../ui';
 import { useProjections } from '../hooks';
+import { describeShock, shockTitle } from '../conditions/shocks';
 
 // Layout constants (pixels). The day axis is `AXIS_PX` wide; chips hang to the right of their day.
 const CHIP_W = 168;
@@ -213,7 +214,16 @@ export function PlanTimeline() {
   const startMonth = useStore((s) => s.company.startMonth);
   const moveDraftAction = useStore((s) => s.moveDraftAction);
   const removeDraftAt = useStore((s) => s.removeDraftAt);
+  const shocks = useStore((s) => s.shocks);
+  const company = useStore((s) => s.company);
   const { ctx } = useProjections();
+  const shockName = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const e of company.employees) map.set(e.id, e.name);
+    for (const v of company.vehicles) map.set(v.id, v.name);
+    for (const q of company.equipment) map.set(q.id, q.name);
+    return (id: string) => map.get(id) ?? id;
+  }, [company]);
 
   const axisPx = Math.max(560, Math.min(1000, Math.round(horizonDays * 2.6)));
   const pxPerDay = axisPx / horizonDays;
@@ -234,6 +244,8 @@ export function PlanTimeline() {
       return { ...l, ...place(mine, pxPerDay) };
     });
   }, [baselineActions, draft, drag, pxPerDay]);
+
+  const conditions = useMemo(() => shockBars(shocks, horizonDays, pxPerDay), [shocks, horizonDays, pxPerDay]);
 
   const dayFromPointer = (clientX: number, d: NonNullable<typeof dragRef.current>) =>
     clampDay(Math.round(((clientX - d.offsetX - d.trackLeft) / axisPx) * horizonDays), horizonDays);
@@ -371,6 +383,38 @@ export function PlanTimeline() {
               </div>
             );
           })}
+          {shocks.length > 0 && (
+            <div className="flex border-b border-line/70 last:border-b-0" data-lane="conditions">
+              <div style={{ width: LABEL_W }} className="sticky left-0 z-10 shrink-0 bg-surface px-3 py-2 text-[12.5px] font-medium text-ink" title="Hypothetical conditions, applied to baseline and draft. Edit them in the Conditions panel.">
+                Conditions
+              </div>
+              <div className="relative" style={{ width: trackWidth, height: conditions.rows * (CHIP_H + ROW_GAP) + ROW_GAP }} data-lane-track="conditions" aria-label="Conditions lane (read-only)">
+                {ticks.map((t) => (
+                  <span key={t.day} className="pointer-events-none absolute inset-y-0 border-l border-line/60" style={{ left: t.day * pxPerDay }} />
+                ))}
+                {conditions.bars.map((b) => {
+                  const shock = shocks[b.index];
+                  const title = shockTitle(shock, shockName);
+                  const full = describeShock(shock, { nameOf: shockName, horizonDays, startMonth });
+                  return (
+                    <div
+                      key={b.index}
+                      role="img"
+                      aria-label={full}
+                      title={full}
+                      data-condition-bar={b.index}
+                      data-from-day={b.fromDay}
+                      data-to-day={b.toDay}
+                      className="absolute flex items-center overflow-hidden rounded-md border border-warn/50 bg-warn-soft px-1.5 text-[11.5px] font-medium text-warn"
+                      style={{ left: b.fromDay * pxPerDay, width: Math.max(28, (b.toDay - b.fromDay) * pxPerDay), top: ROW_GAP + b.row * (CHIP_H + ROW_GAP), height: CHIP_H }}
+                    >
+                      <span className="truncate">{title}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

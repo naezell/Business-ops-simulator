@@ -6,7 +6,7 @@
  */
 import { create } from 'zustand';
 import { MONTH_LENGTHS, runSimulation, validateScenario } from '@/simulation';
-import type { Action, CompanyConfig, PlannedAction, Scenario, SimulationResult, ValidationIssue } from '@/simulation';
+import type { Action, CompanyConfig, PlannedAction, Scenario, Shock, SimulationResult, ValidationIssue } from '@/simulation';
 import { defaultIndustryId, getIndustry } from '@/business/registry';
 import type { IndustryDefinition } from '@/business/types';
 import { applyPatch, chipKey, type CompanyPatch } from './derive';
@@ -36,6 +36,8 @@ interface Core {
   /** Pending decisions: dated actions plus decision rules (rules are not simulated yet). */
   draft: DraftPlan;
   patch: CompanyPatch;
+  /** Hypothetical conditions: describe the world, so they apply to baseline and draft alike. */
+  shocks: Shock[];
 }
 
 interface Outcome {
@@ -70,6 +72,7 @@ function buildScenarios(industry: IndustryDefinition, core: Core): { baseline: S
     actions: core.baselineActions,
     horizonDays,
     seed: core.seed,
+    ...(core.shocks.length > 0 ? { shocks: core.shocks } : {}),
   };
   const draft: Scenario = { ...baseline, id: 'draft', name: 'Draft', actions: [...core.baselineActions, ...core.draft.actions] };
   return { baseline, draft, company };
@@ -91,7 +94,7 @@ export interface OptState {
 
 /** Fingerprint of everything that changes what the optimizer would see. */
 export function scenarioKey(s: Core): string {
-  return JSON.stringify([s.industryId, s.seed, s.horizonMonths, s.patch, s.baselineActions, s.draft]);
+  return JSON.stringify([s.industryId, s.seed, s.horizonMonths, s.patch, s.shocks, s.baselineActions, s.draft]);
 }
 
 export interface AppState extends Core {
@@ -123,6 +126,10 @@ export interface AppState extends Core {
   moveDraftAction: (index: number, day: number) => void;
   /** Replaces the draft's decision rules (stored and persisted; not simulated yet). */
   setDraftRules: (rules: DecisionRule[]) => void;
+  /** Adds a hypothetical condition (engine days, 0-based, window [fromDay, toDay)). */
+  addShock: (shock: Shock) => void;
+  updateShock: (index: number, shock: Shock) => void;
+  removeShock: (index: number) => void;
   /** Removes the chip with the given key (no-op if absent). */
   removeDraftByKey: (key: string) => void;
   /** Appends several planned actions through the same de-duplication as chips. Used by the optimizer. */
@@ -150,7 +157,7 @@ interface Built {
 }
 
 function freshCore(industryId: string): Core {
-  return { industryId, seed: DEFAULT_SEED, horizonMonths: 12, baselineActions: [], draft: { actions: [], rules: [] }, patch: {} };
+  return { industryId, seed: DEFAULT_SEED, horizonMonths: 12, baselineActions: [], draft: { actions: [], rules: [] }, patch: {}, shocks: [] };
 }
 
 /** Builds and simulates from a core; throws if the baseline cannot be simulated. */
@@ -184,6 +191,7 @@ function initial(): Built & { selectedDay: number; view: ViewId } {
         baselineActions: stored.baselineActions,
         draft: stored.draft,
         patch: stored.patch,
+        shocks: stored.shocks,
       };
       const built = buildAll(core);
       // A draft that no longer simulates counts as unusable stored data.
@@ -201,7 +209,7 @@ let persistTimer: ReturnType<typeof setTimeout> | null = null;
 let lastBaselineKey = '';
 let optHandle: OptimizationHandle | null = null;
 
-const baselineKeyOf = (c: Core) => JSON.stringify([c.industryId, c.seed, c.horizonMonths, c.patch, c.baselineActions]);
+const baselineKeyOf = (c: Core) => JSON.stringify([c.industryId, c.seed, c.horizonMonths, c.patch, c.shocks, c.baselineActions]);
 
 export const useStore = create<AppState>()((set, get) => {
   const init = initial();
@@ -217,6 +225,7 @@ export const useStore = create<AppState>()((set, get) => {
       baselineActions: s.baselineActions,
       draft: s.draft,
       patch: s.patch,
+      shocks: s.shocks,
       ...next,
     };
     const industry = getIndustry(core.industryId);
@@ -252,6 +261,7 @@ export const useStore = create<AppState>()((set, get) => {
       baselineActions: s.baselineActions,
       draft: s.draft,
       patch: s.patch,
+      shocks: s.shocks,
     };
     const industry = getIndustry(core.industryId);
     const { baseline, draft } = buildScenarios(industry, core);
@@ -325,6 +335,13 @@ export const useStore = create<AppState>()((set, get) => {
       commit({ draft: { ...s0.draft, actions: list } });
     },
     setDraftRules: (rules) => commit({ draft: { ...get().draft, rules } }),
+    addShock: (shock) => commit({ shocks: [...get().shocks, shock] }),
+    updateShock: (index, shock) => {
+      const list = get().shocks;
+      if (!list[index]) return;
+      commit({ shocks: list.map((x, i) => (i === index ? shock : x)) });
+    },
+    removeShock: (index) => commit({ shocks: get().shocks.filter((_, i) => i !== index) }),
     applyPlannedActions: (actions, candidateId) => {
       const s0 = get();
       const list = s0.draft.actions.slice();
@@ -348,6 +365,7 @@ export const useStore = create<AppState>()((set, get) => {
         baselineActions: s.baselineActions,
         draft: s.draft,
         patch: s.patch,
+        shocks: s.shocks,
       };
       const key = scenarioKey(core);
       // The optimizer improves the current draft: baseline plus pending decisions is the scenario it starts from.
@@ -427,6 +445,7 @@ useStore.subscribe((s) => {
       baselineActions: s.baselineActions,
       draft: s.draft,
       patch: s.patch,
+      shocks: s.shocks,
       selectedDay: s.selectedDay,
       view: s.view,
     };

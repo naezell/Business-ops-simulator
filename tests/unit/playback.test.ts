@@ -94,7 +94,7 @@ describe('dayFeed', () => {
     { day: 4, type: 'employee-quit', employeeId: 'e2' },
     { day: 3, type: 'cash-shortfall', amount: 120 },
     { day: 3, type: 'action-rejected', action: { type: 'set-price' }, reason: 'no cash' },
-    { day: 3, type: 'shock-started', shockId: 'storm' },
+    { day: 3, type: 'shock-started', shockIndex: 0 },
     { day: 3, type: 'rule-fired', ruleId: 'r1', amount: -75 },
   ] as unknown as SimEvent[];
   const names: Record<string, string> = { v1: 'Truck 1', e1: 'Sam', e2: 'Lee', a1: 'Ana', 'crew-1': 'Crew 1' };
@@ -107,7 +107,8 @@ describe('dayFeed', () => {
     expect(f[1]).toEqual({ kind: 'breakdown', text: 'Truck 1 broke down (2 days down)', money: -450 });
     expect(f[3].money).toBe(-120);
     expect(f[4].text).toBe('Decision rejected: Change prices (no cash)');
-    expect(f[5].text).toBe('Shock started: storm');
+    expect(f[5].text).toBe('Condition started');
+    expect(dayFeed(3, events, [], nameOf, (i) => (i === 0 ? 'Fuel price +30%' : undefined))[4].text).toBe('Condition started: Fuel price +30%');
     expect(f[6].money).toBe(-75);
   });
   it('is empty on a quiet day', () => {
