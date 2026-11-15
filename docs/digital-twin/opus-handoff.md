@@ -180,3 +180,17 @@ documentation and dependency updates are yours.
 19. **Study: synergy pairs** are screened on the screening seeds and re-evaluated on K
     seeds; the screening Δ of each member is recomputed on the same seeds, so
     `interaction` is Δab − Δa − Δb on identical seeds.
+20. **C2 calibration of `twin-90` (numbers only, `demoTwin.ts`).** Changes from H10's first
+    guesses: one-off arrival rates of the demo's job types × 1.3–2.5 (busier spring book),
+    residential slot 4 weekly instead of biweekly (70/20/10 plan mix), wages × 1.25 (market
+    reference wages likewise), overhead $10.7k → $23.2k/month (operations manager, full-time
+    office, insurance, rent), starting cash $110k with a $30k reserve, overtime headroom
+    0.5 h/day. Plausibility checks (mean of seeds 1–5): net margin 7.4% (3–10%),
+    utilization 0.70 (0.60–0.78), missed-job rate 2.3% (2–6%) concentrated in weeks 9–12
+    (late May), no shortfall day, cash below the reserve in 5 of 5 seeds — all met. Study
+    (default request, in-process): 113 feasible strategies, recommendations in four
+    categories (pricing, crew, staffing, equipment), a conditional finalist (mulch price
+    rise, gain fades long-run) — met; **no recommended strategy starts after day 0** —
+    not met. The study's best answer is to close one maintenance crew (with floating and the
+    two floaters absorbing its work) plus a mulch price rise, which holds in the long-run
+    and stress checks. Per IC §10 this is reported rather than tuned away.

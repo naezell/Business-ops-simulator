@@ -54,7 +54,7 @@ const GOLDEN_ANGLE_RADIANS = 2.399963;
 /**
  * Segment and plan by slot. The index i uses slot = i % 10, so each block of ten customers holds
  * 6 residential (slots 0–5), 3 commercial (slots 6–8) and 1 large site (slot 9).
- * Plans by slot: residential weekly, weekly, weekly, biweekly, biweekly, none;
+ * Plans by slot: residential weekly, weekly, weekly, biweekly, weekly, none;
  * commercial weekly, weekly, biweekly; large site weekly.
  */
 const PLAN_BY_SLOT: (Id | null)[] = [
@@ -62,7 +62,7 @@ const PLAN_BY_SLOT: (Id | null)[] = [
   'mow-weekly',
   'mow-weekly',
   'mow-biweekly',
-  'mow-biweekly',
+  'mow-weekly',
   null,
   'mow-weekly',
   'mow-weekly',
@@ -83,11 +83,19 @@ function roundTo(value: number, decimals: number): number {
   return Math.round(value * factor) / factor;
 }
 
+/**
+ * Calibration (task C2): one-off demand of this demo company relative to the landscaping job-type
+ * defaults (illustrative assumptions). A busier spring book than the sample company.
+ */
+const DEMO_ONE_OFF_RATE_FACTOR: Record<Id, number> = { cleanup: 2.2, mulch: 2.5, aeration: 2, pruning: 1.6, install: 1.3 };
+
 function cloneJobType(jobType: JobTypeDef): JobTypeDef {
+  const f = DEMO_ONE_OFF_RATE_FACTOR[jobType.id];
   return {
     ...jobType,
     requiredEquipmentTypes: [...jobType.requiredEquipmentTypes],
     seasonality: [...jobType.seasonality],
+    ...(f !== undefined && jobType.annualRatePerCustomer !== undefined ? { annualRatePerCustomer: jobType.annualRatePerCustomer * f } : {}),
   };
 }
 
@@ -156,7 +164,14 @@ function buildVehicles(): Vehicle[] {
  * 20 employees: 18 crew members (three per crew) and two unassigned floaters.
  * Wages: skill 1 $17–18, skill 2 $19–20, skill 3 $24–26 (illustrative). Tenure is in days at day 0.
  */
+/** Calibration (C2): wages relative to the first-guess list below (illustrative 2026 pay levels). */
+const DEMO_WAGE_FACTOR = 1.25;
+
 function buildEmployees(): Employee[] {
+  return baseEmployees().map((e) => ({ ...e, hourlyWage: roundTo(e.hourlyWage * DEMO_WAGE_FACTOR, 2) }));
+}
+
+function baseEmployees(): Employee[] {
   return [
     { id: 'e01', name: 'M1 lead', hourlyWage: 24, skill: 3, productivity: 1.1, crewId: 'crew-m1', tenureDays: 1400 },
     { id: 'e02', name: 'M1 member 2', hourlyWage: 20, skill: 2, productivity: 1.05, crewId: 'crew-m1', tenureDays: 600 },
@@ -280,7 +295,7 @@ export function createDemoTwinScenario(): TwinScenario {
       policies: {
         shiftHours: 8,
         workDaysPerWeek: 5,
-        maxOvertimeHoursPerDay: 1.5,
+        maxOvertimeHoursPerDay: 0.5,
         minPaidHoursPerShift: 6,
         rainoutPaidHours: 2,
         routing: 'nearest',
@@ -334,7 +349,7 @@ export function createDemoTwinScenario(): TwinScenario {
         absenceFatigueWeight: 1.0,
         productivityFatigueLoss: 0.5,
         wageQuitElasticity: 1.5,
-        marketWageBySkill: [17.5, 17.5, 20, 24],
+        marketWageBySkill: [17.5, 17.5, 20, 24].map((w) => roundTo(w * DEMO_WAGE_FACTOR, 2)),
         earlyTenureQuitBoost: 1.0,
         annualRaiseRate: 0.03,
       },
@@ -371,17 +386,19 @@ export function createDemoTwinScenario(): TwinScenario {
         roadFactor: 1.3,
         stopOverheadHours: 0.05,
         overhead: [
-          { id: 'owner-salary', name: 'Owner salary', monthlyAmount: 5000 },
-          { id: 'office-admin', name: 'Office admin (part-time)', monthlyAmount: 2200 },
-          { id: 'insurance', name: 'Insurance', monthlyAmount: 1200 },
-          { id: 'shop-rent', name: 'Shop & yard rent', monthlyAmount: 1500 },
-          { id: 'software', name: 'Software & phones', monthlyAmount: 400 },
-          { id: 'misc', name: 'Miscellaneous', monthlyAmount: 400 },
+          // Calibrated (C2) for a 20-person company: illustrative, not quotes.
+          { id: 'owner-salary', name: 'Owner salary', monthlyAmount: 7000 },
+          { id: 'ops-manager', name: 'Operations manager', monthlyAmount: 5500 },
+          { id: 'office-admin', name: 'Office admin', monthlyAmount: 3600 },
+          { id: 'insurance', name: 'Insurance', monthlyAmount: 2800 },
+          { id: 'shop-rent', name: 'Shop & yard rent', monthlyAmount: 2600 },
+          { id: 'software', name: 'Software & phones', monthlyAmount: 700 },
+          { id: 'misc', name: 'Miscellaneous', monthlyAmount: 1000 },
         ],
       },
       finance: {
-        startingCash: 45000,
-        minCashReserve: 15000,
+        startingCash: 110000,
+        minCashReserve: 30000,
         lineOfCredit: { limit: 40000, annualRate: 0.11 },
         ar: {
           collectionDaysMean: 21,

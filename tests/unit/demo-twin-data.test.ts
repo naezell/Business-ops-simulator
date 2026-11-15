@@ -101,12 +101,12 @@ describe('size factors, plans and phases', () => {
     expect(Math.max(...residential.map((c) => c.sizeFactor))).toBeLessThanOrEqual(1.8);
   });
 
-  it('assigns plans: 60 weekly, 30 biweekly, 10 with no plan', () => {
+  it('assigns plans: 70 weekly, 20 biweekly, 10 with no plan (calibrated in C2: slot 4 is weekly)', () => {
     // Per block of 10: slots 0,1,2,6,7,9 weekly (6); slots 3,4,8 biweekly (3); slot 5 none (1).
     // 10 blocks: weekly 60, biweekly 30, none 10.
     const plans = company.customers.map((c) => c.recurringJobTypeId);
-    expect(plans.filter((p) => p === 'mow-weekly')).toHaveLength(60);
-    expect(plans.filter((p) => p === 'mow-biweekly')).toHaveLength(30);
+    expect(plans.filter((p) => p === 'mow-weekly')).toHaveLength(70); // slots 0,1,2,4,6,7,9 × 10
+    expect(plans.filter((p) => p === 'mow-biweekly')).toHaveLength(20); // slots 3, 8 × 10
     expect(plans.filter((p) => p === null)).toHaveLength(10);
   });
 
@@ -140,14 +140,14 @@ describe('size factors, plans and phases', () => {
 
     // c035 (i=34): slot 4 residential, cluster 2 centre (4.5, -2.0), k=0 -> x = 4.62, y = -2.0.
     //   34·0.754877 = 25.665818, fraction 0.665818 -> sizeFactor 0.8 + 0.665818 = 1.465818 -> 1.47.
-    //   34·0.618034 = 21.013156 -> phase 0.0132. slot 4 -> mow-biweekly.
+    //   34·0.618034 = 21.013156 -> phase 0.0132. slot 4 -> mow-weekly (calibrated in C2).
     const c035 = company.customers[34];
     expect(c035.id).toBe('c035');
     expect(c035.x).toBeCloseTo(4.62, 3);
     expect(c035.y).toBeCloseTo(-2.0, 3);
     expect(c035.sizeFactor).toBeCloseTo(1.47, 2);
     expect(c035.phase).toBeCloseTo(0.0132, 4);
-    expect(c035.recurringJobTypeId).toBe('mow-biweekly');
+    expect(c035.recurringJobTypeId).toBe('mow-weekly');
 
     // c086 (i=85): slot 5 residential, cluster 5 centre (1.0, 5.5), k=85-85=0 -> x = 1.12, y = 5.5.
     //   85·0.754877 = 64.164545, fraction 0.164545 -> sizeFactor 0.8 + 0.164545 = 0.964545 -> 0.96.

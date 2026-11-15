@@ -28,8 +28,8 @@ Plan and task ids: `docs/digital-twin/implementation-plan.md`.
 | Design: assessment, simulation and optimization design, contracts, ADR-009…017, plan, handoff; contract files `types-twin.ts`, `study-types.ts` | — | done |
 | M1 Safe to change | E0, H10, S7, S8 | done — golden master (`tests/regression`), demo scenario `twin-90` (uncalibrated), playback, plan timeline |
 | M2 The world and reactions | E3, E4, E5, S9, H12, H14 | done — shocks, disposal/replacement/distributions and new actions, decision rules, conditions panel, ParamMeta; H12 part 1 (part 2 with E6 formulas in M3) |
-| M3 Long-run behaviour | E6, E7, E8, S11, H13 | in progress — E6 done |
-| M4 The study | O4–O8, S10, C2 | not started |
+| M3 Long-run behaviour | E6, E7, E8, S11, H13 | done — dynamics, floating, customer stats and scaling helpers, multi-year views, benchmarks B1–B12 (H12 complete) |
+| M4 The study | O4–O8, S10, C2 | in progress — O4–O8 and C2 done (study engine, worker pool, calibrated demo); S10 (Study view) in progress |
 | M5 Milestone demo | O9, S12 | not started |
 
 ## Completed features
