@@ -96,3 +96,17 @@ documentation and dependency updates are yours.
 ## 8. Clarifications adopted during implementation
 
 (Opus: append here.)
+
+1. **Golden master scope (E0).** Besides the sample company and the six fixtures,
+   the net covers three `tests/simulation/scenarios.ts` scenarios (tiny deterministic,
+   financed and leased, all actions) and three full-detail cases (crew logs are read
+   by playback). The engine at `57b395c` is source-identical to `25231bd`.
+2. **Playback travel legs (S7).** A leg is interpolated linearly over
+   [previous `depart` (0 for the first leg), `arrive`]; the engine's `arrive` excludes
+   stop overhead, so the on-site interval [`arrive`, `depart`) includes it.
+3. **Day numbering in the UI (S8).** The timeline and scrubber show 1-based "Day N"
+   (engine day N−1), consistent with the existing day scrubber.
+4. **Demo dynamics before E3 (H10).** `demoTwin.ts` declares dynamics as typed
+   constants spread into the company; its `ParamMeta` (`demoTwinParamMeta`) is kept
+   separate from `landscapingParamMeta` because those paths do not exist on the
+   sample company. H14 merges it.
