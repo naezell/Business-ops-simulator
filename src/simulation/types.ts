@@ -432,6 +432,11 @@ export interface OpsMetrics {
   jobsCompleted: number;
   jobsCancelled: number;
   jobsLate: number;
+  /**
+   * ADDITIVE (E1): orders removed without counting as missed — the customer churned or the job
+   * type was withdrawn (set-job-type-offered false). Needed for the order-conservation invariant.
+   */
+  jobsWithdrawn: number;
   leads: number;
   newCustomers: number;
   churnedCustomers: number;
@@ -544,6 +549,8 @@ export interface CrewDayLog {
   vehicleId: Id | null;
   memberIds: Id[];
   absentIds: Id[];
+  /** ADDITIVE (E1): equipment items in the crew's kit today (own + borrowed). Empty if not deployed. */
+  equipmentIds: Id[];
   stops: RouteStop[];
   /** Crew clock when back at the depot. */
   endClock: number;
