@@ -228,6 +228,13 @@ export function dispatchDay(st: SimState, ctx: DayCtx, weather: WeatherState, fu
       }
     }
     for (const it of run.kit) usedE.add(it);
+  }
+
+  // Floating idle workers (simulation-design §7): fill free seats on deployed crews from the pool.
+  const floaters = pol.floatIdleWorkers ? floatIdle(st, runs) : null;
+
+  for (const run of runs) {
+    if (run.status !== 'fielded') continue;
     run.n = run.deployed.length;
     run.rate = crewRate(
       run.deployed.map((e) => ({ productivity: st.wfDyn ? e.productivity * e.prodMult : e.productivity, tenureDays: day - e.hireDay })),
@@ -479,9 +486,10 @@ export function dispatchDay(st: SimState, ctx: DayCtx, weather: WeatherState, fu
       it.hoursToday = 0;
     }
   }
-  // Employees without a crew: paid the minimum shift (idle) when present.
+  // Employees without a crew: paid the minimum shift (idle) when present (floaters are paid by their crew).
   for (const e of st.employees) {
     if (!e.active || e.absent || e.crewId !== null) continue;
+    if (floaters && floaters.has(e)) continue;
     pay(e, minPaid, 0, 0, null);
   }
 
@@ -509,6 +517,57 @@ export function dispatchDay(st: SimState, ctx: DayCtx, weather: WeatherState, fu
     return log;
   });
   return { logs };
+}
+
+/**
+ * §7 pool: present members of crews that cannot deploy, seat-overflow members and present
+ * employees with no crew, ordered by skill (descending) then config order. Each joins the deployed
+ * crew with a free seat and the fewest deployed members (ties: crew config order). Returns the
+ * employees who floated; they are removed from their origin's lists so they are paid once.
+ */
+function floatIdle(st: SimState, runs: CrewRun[]): Set<EmpS> {
+  const order = new Map<EmpS, number>();
+  st.employees.forEach((e, i) => order.set(e, i));
+  const origin = new Map<EmpS, { run: CrewRun | null; list: 'present' | 'overflow' | null }>();
+  const pool: EmpS[] = [];
+  for (const r of runs) {
+    if (r.status === 'fielded') {
+      for (const e of r.overflow) {
+        pool.push(e);
+        origin.set(e, { run: r, list: 'overflow' });
+      }
+    } else {
+      for (const e of r.present) {
+        pool.push(e);
+        origin.set(e, { run: r, list: 'present' });
+      }
+    }
+  }
+  for (const e of st.employees) {
+    if (!e.active || e.absent || e.crewId !== null) continue;
+    pool.push(e);
+    origin.set(e, { run: null, list: null });
+  }
+  pool.sort((a, b) => b.skill - a.skill || (order.get(a) as number) - (order.get(b) as number));
+  const floated = new Set<EmpS>();
+  for (const e of pool) {
+    let best: CrewRun | null = null;
+    for (const r of runs) {
+      if (r.status !== 'fielded') continue;
+      const seats = Math.max(0, Math.floor((r.vehicle as VehicleS).seats));
+      if (r.deployed.length >= seats) continue;
+      if (best === null || r.deployed.length < best.deployed.length) best = r;
+    }
+    if (!best) continue;
+    best.deployed.push(e);
+    floated.add(e);
+    const o = origin.get(e) as { run: CrewRun | null; list: 'present' | 'overflow' | null };
+    if (o.run && o.list) {
+      const l = o.run[o.list];
+      l.splice(l.indexOf(e), 1);
+    }
+  }
+  return floated;
 }
 
 /** Revenue, lateness, invoice for a completed order. */
