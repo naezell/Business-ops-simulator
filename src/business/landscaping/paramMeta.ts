@@ -40,6 +40,7 @@ export const landscapingParamMeta: Record<string, ParamMeta> = Object.fromEntrie
   meta('market.acquisitionPriceElasticity', 'Acquisition price sensitivity', 'Illustrative assumption for how strongly conversion falls when prices rise.', 'elasticity', 0, 5, 0.1, ASSUMPTION),
   meta('market.baseMonthlyChurn', 'Base monthly churn', 'Illustrative assumption for the share of customers who leave in a typical month at the current price level.', 'fraction', 0, 0.2, 0.001, ASSUMPTION),
   meta('market.retentionPriceElasticity', 'Retention price sensitivity', 'Illustrative assumption for how strongly churn rises when prices rise.', 'elasticity', 0, 5, 0.1, ASSUMPTION),
+  meta('market.oneOffPriceElasticity', 'One-off job price sensitivity', 'Illustrative assumption for how strongly requests for one-off jobs fall when their price rises.', 'elasticity', 0, 5, 0.1, ASSUMPTION),
   meta('market.priceIncreaseShockChurnPerPct', 'Churn shock per 1% price rise', 'Illustrative assumption for the one-time share of customers lost for each 1% price increase.', 'fraction', 0, 0.05, 0.001, ASSUMPTION),
   meta('market.serviceFailureChurnWeight', 'Churn weight of service failures', 'Illustrative assumption for how much recent missed or late service raises the churn rate.', 'multiplier', 0, 10, 0.1, ASSUMPTION),
   meta('market.serviceFailureHalfLifeDays', 'Service failure memory', 'Illustrative assumption for how many days it takes for a service failure to lose half of its effect on churn.', 'days', 1, 365, 1, ASSUMPTION),

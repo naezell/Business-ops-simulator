@@ -251,6 +251,14 @@ describe('parameter metadata', () => {
     expect(landscapingParamMeta['market.acquisitionPriceElasticity'].provenance).toBe('industry-assumption');
   });
 
+  it('declares the one-off price elasticity (ADR-008) as an illustrative industry assumption of 1.5', () => {
+    expect(company.market.oneOffPriceElasticity).toBe(1.5);
+    const m = landscapingParamMeta['market.oneOffPriceElasticity'];
+    expect(m.provenance).toBe('industry-assumption');
+    expect(m.unit).toBe('elasticity');
+    expect(m.description).toMatch(/illustrative assumption/i);
+  });
+
   it('no label or description says "benchmark" or "industry average"', () => {
     const forbidden = /benchmark|industry average/i;
     for (const meta of Object.values(landscapingParamMeta)) {

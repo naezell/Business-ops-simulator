@@ -12,6 +12,7 @@ import {
   leadRatePerDay,
   monthlyChurnRate,
   oneOffDailyProbability,
+  oneOffPriceFactor,
   priceIndex,
   priceIndexFrom,
   priceMultiplier,
@@ -226,6 +227,40 @@ describe('oneOffDailyProbability = annualRate × seasonality / 365', () => {
 
   it('0.15 a year at seasonality 1: 0.15 / 365 = 0.00041096', () => {
     expect(oneOffDailyProbability(0.15, 1)).toBeCloseTo(0.00041096, 8);
+  });
+});
+
+describe('one-off price response (§5.2, ADR-008): × P^(−oneOffPriceElasticity)', () => {
+  it('rate 0.6, seasonality 1.5, P = 1.2, elasticity 1.5: hand-computed', () => {
+    // base = 0.6 × 1.5 / 365 = 0.9 / 365 = 0.0024657534246575
+    // 1.2^1.5 = 1.2 × √1.2 = 1.2 × 1.0954451150103321 = 1.3145341380123985
+    // factor = 1 / 1.3145341380123985 = 0.7607257743127307
+    // p = 0.0024657534246575 × 0.7607257743127307 = 0.0018757621...
+    const base = 0.9 / 365;
+    const factor = 1 / (1.2 * Math.sqrt(1.2));
+    expect(oneOffPriceFactor(1.2, 1.5)).toBeCloseTo(0.76072577431, 10);
+    expect(oneOffDailyProbability(0.6, 1.5, 1.2, 1.5)).toBeCloseTo(base * factor, 14);
+    expect(oneOffDailyProbability(0.6, 1.5, 1.2, 1.5)).toBeCloseTo(0.00187576, 8);
+  });
+
+  it('a price cut raises arrivals: P = 0.8, elasticity 2 ⇒ factor 1 / 0.64 = 1.5625', () => {
+    expect(oneOffPriceFactor(0.8, 2)).toBeCloseTo(1.5625, 12);
+    // 0.365 × 1 / 365 = 0.001; × 1.5625 = 0.0015625
+    expect(oneOffDailyProbability(0.365, 1, 0.8, 2)).toBeCloseTo(0.0015625, 12);
+  });
+
+  it('missing or zero elasticity, or P = 1, leaves the probability exactly unchanged', () => {
+    const base = oneOffDailyProbability(0.6, 1.5);
+    expect(base).toBe((0.6 * 1.5) / 365);
+    expect(oneOffDailyProbability(0.6, 1.5, 1.3)).toBe(base);
+    expect(oneOffDailyProbability(0.6, 1.5, 1.3, 0)).toBe(base);
+    expect(oneOffDailyProbability(0.6, 1.5, 1, 1.5)).toBe(base);
+    expect(oneOffPriceFactor(1.3, undefined)).toBe(1);
+  });
+
+  it('P ≤ 0 means factor 1 (no response)', () => {
+    expect(oneOffPriceFactor(0, 1.5)).toBe(1);
+    expect(oneOffPriceFactor(-0.5, 1.5)).toBe(1);
   });
 });
 

@@ -102,9 +102,30 @@ export function priceShockProbability(shockPerPct: number, delta: number): numbe
   return delta > 0 ? Math.min(0.9, shockPerPct * 100 * delta) : 0;
 }
 
-/** One-off arrival probability per customer per day. */
-export function oneOffDailyProbability(annualRatePerCustomer: number, seasonality: number): number {
-  return (annualRatePerCustomer * seasonality) / 365;
+/**
+ * Price response of one-off arrivals (§5.2, ADR-008): P^(−elasticity).
+ * Missing/0 elasticity ⇒ 1; P ≤ 0 (or non-finite) ⇒ 1.
+ */
+export function oneOffPriceFactor(priceMult: number, elasticity: number | undefined): number {
+  const e = elasticity ?? 0;
+  if (e === 0 || !(priceMult > 0) || !Number.isFinite(priceMult)) return 1;
+  return Math.pow(priceMult, -e);
+}
+
+/**
+ * One-off arrival probability per customer per day (§5.2):
+ * annualRate × seasonality / 365 × P^(−elasticity). With the default price arguments this is
+ * exactly annualRate × seasonality / 365.
+ */
+export function oneOffDailyProbability(
+  annualRatePerCustomer: number,
+  seasonality: number,
+  priceMult = 1,
+  elasticity?: number,
+): number {
+  const base = (annualRatePerCustomer * seasonality) / 365;
+  const f = oneOffPriceFactor(priceMult, elasticity);
+  return f === 1 ? base : base * f;
 }
 
 // ───────────── State helpers ─────────────
@@ -173,12 +194,11 @@ function churnPrefix(seed: number, c: CustomerS): number {
 }
 
 export function currentPriceIndex(st: SimState): number {
+  // Count per job-type index first (hot path: once per day over every customer), then key by id.
+  const byIdx = new Array<number>(st.jobTypes.length).fill(0);
+  for (const c of st.customers) if (c.active && c.planIdx >= 0) byIdx[c.planIdx] += 1;
   const counts: Record<Id, number> = {};
-  for (const c of st.customers) {
-    if (!c.active || c.planIdx < 0) continue;
-    const id = st.jobTypes[c.planIdx].def.id;
-    counts[id] = (counts[id] ?? 0) + 1;
-  }
+  for (let i = 0; i < byIdx.length; i++) if (byIdx[i] > 0) counts[st.jobTypes[i].def.id] = byIdx[i];
   return priceIndex(st.company.jobTypes, st.company.pricing, counts);
 }
 
@@ -190,7 +210,15 @@ export function demandStep(st: SimState, ctx: DayCtx): void {
   const pIdx = currentPriceIndex(st);
   const decay = failureDecayFactor(mk.serviceFailureHalfLifeDays);
   const oneOffs = st.jobTypes.filter((j) => j.def.kind === 'one-off' && j.def.offered);
-  const oneOffP = oneOffs.map((j) => oneOffDailyProbability(j.def.annualRatePerCustomer ?? 0, j.def.seasonality[m]));
+  // Same draw u at every price: the price factor only scales the threshold (ADR-008).
+  const oneOffP = oneOffs.map((j) =>
+    oneOffDailyProbability(
+      j.def.annualRatePerCustomer ?? 0,
+      j.def.seasonality[m],
+      priceMultiplier(st.company.pricing, j.def.id),
+      mk.oneOffPriceElasticity,
+    ),
+  );
   const fresh: OrderS[] = [];
 
   // Recurring accrual and one-off arrivals (customers present at start of step).

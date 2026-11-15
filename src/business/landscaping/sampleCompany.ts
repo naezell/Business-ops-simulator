@@ -205,6 +205,7 @@ export function createSampleCompany(): CompanyConfig {
       acquisitionPriceElasticity: 2.5,
       baseMonthlyChurn: 0.015,
       retentionPriceElasticity: 2.5,
+      oneOffPriceElasticity: 1.5,
       priceIncreaseShockChurnPerPct: 0.006,
       serviceFailureChurnWeight: 0.6,
       serviceFailureHalfLifeDays: 30,

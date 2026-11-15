@@ -25,6 +25,7 @@ export {
   failureDecayFactor,
   priceShockProbability,
   oneOffDailyProbability,
+  oneOffPriceFactor,
   clamp,
   ACCRUAL_EPS,
 } from './demand';
