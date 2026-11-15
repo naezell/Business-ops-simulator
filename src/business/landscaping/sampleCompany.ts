@@ -108,13 +108,13 @@ function equipmentItem(
 export function createSampleCompany(): CompanyConfig {
   const employees: Employee[] = [
     { id: 'e1', name: 'Marcus (lead)', hourlyWage: 24, skill: 3, productivity: 1.1, crewId: 'crew-a', tenureDays: 1400 },
-    { id: 'e2', name: 'Diego', hourlyWage: 18, skill: 1, productivity: 1.0, crewId: 'crew-a', tenureDays: 600 },
-    { id: 'e3', name: 'Tyler', hourlyWage: 17, skill: 1, productivity: 0.95, crewId: 'crew-a', tenureDays: 120 },
+    { id: 'e2', name: 'Diego', hourlyWage: 18, skill: 1, productivity: 1.05, crewId: 'crew-a', tenureDays: 600 },
+    { id: 'e3', name: 'Tyler', hourlyWage: 17, skill: 1, productivity: 1.0, crewId: 'crew-a', tenureDays: 120 },
     { id: 'e4', name: 'Renee (lead)', hourlyWage: 24, skill: 3, productivity: 1.1, crewId: 'crew-b', tenureDays: 900 },
-    { id: 'e5', name: 'Sam', hourlyWage: 18, skill: 1, productivity: 1.0, crewId: 'crew-b', tenureDays: 400 },
+    { id: 'e5', name: 'Sam', hourlyWage: 18, skill: 1, productivity: 1.05, crewId: 'crew-b', tenureDays: 400 },
     { id: 'e6', name: 'Jordan', hourlyWage: 17, skill: 1, productivity: 0.9, crewId: 'crew-b', tenureDays: 30 },
     { id: 'e7', name: 'Alicia (lead)', hourlyWage: 26, skill: 3, productivity: 1.15, crewId: 'crew-c', tenureDays: 1100 },
-    { id: 'e8', name: 'Ben', hourlyWage: 20, skill: 2, productivity: 1.0, crewId: 'crew-c', tenureDays: 500 },
+    { id: 'e8', name: 'Ben', hourlyWage: 20, skill: 2, productivity: 1.05, crewId: 'crew-c', tenureDays: 500 },
   ];
 
   const crews: Crew[] = [
@@ -188,10 +188,10 @@ export function createSampleCompany(): CompanyConfig {
     policies: {
       shiftHours: 8,
       workDaysPerWeek: 5,
-      maxOvertimeHoursPerDay: 1,
+      maxOvertimeHoursPerDay: 1.5,
       minPaidHoursPerShift: 4,
       rainoutPaidHours: 2,
-      routing: 'fifo',
+      routing: 'nearest',
       autoBackfill: true,
       acceptNewCustomers: true,
     },
@@ -202,10 +202,10 @@ export function createSampleCompany(): CompanyConfig {
       marketingSpendScale: 1500,
       leadSeasonality: [0.6, 0.8, 1.5, 1.6, 1.3, 1, 0.8, 0.7, 0.9, 1, 0.9, 0.9],
       baseConversionRate: 0.35,
-      acquisitionPriceElasticity: 2,
-      baseMonthlyChurn: 0.025,
-      retentionPriceElasticity: 1.5,
-      priceIncreaseShockChurnPerPct: 0.003,
+      acquisitionPriceElasticity: 2.5,
+      baseMonthlyChurn: 0.015,
+      retentionPriceElasticity: 2.5,
+      priceIncreaseShockChurnPerPct: 0.006,
       serviceFailureChurnWeight: 0.6,
       serviceFailureHalfLifeDays: 30,
       newCustomer: {
@@ -220,8 +220,8 @@ export function createSampleCompany(): CompanyConfig {
       overtimeMultiplier: 1.5,
       overtimeWeeklyThresholdHours: 40,
       absenceRate: 0.03,
-      annualTurnoverRate: 0.45,
-      timeToFillDays: 21,
+      annualTurnoverRate: 0.35,
+      timeToFillDays: 14,
       hiringCostPerHire: 1200,
       rampDays: 45,
       rampStartProductivity: 0.6,
@@ -247,8 +247,8 @@ export function createSampleCompany(): CompanyConfig {
       },
     },
     weather: {
-      rainoutProbByMonth: [0.08, 0.08, 0.09, 0.08, 0.09, 0.12, 0.13, 0.12, 0.1, 0.07, 0.07, 0.08],
-      partialProbByMonth: [0.1, 0.1, 0.1, 0.1, 0.12, 0.14, 0.14, 0.14, 0.12, 0.09, 0.09, 0.1],
+      rainoutProbByMonth: [0.07, 0.08, 0.11, 0.12, 0.11, 0.09, 0.07, 0.07, 0.07, 0.07, 0.07, 0.08],
+      partialProbByMonth: [0.1, 0.1, 0.13, 0.14, 0.13, 0.11, 0.1, 0.1, 0.1, 0.09, 0.09, 0.1],
       partialDayFraction: 0.5,
     },
     costs: {
@@ -257,12 +257,12 @@ export function createSampleCompany(): CompanyConfig {
       roadFactor: 1.3,
       stopOverheadHours: 0.05,
       overhead: [
-        { id: 'owner-salary', name: 'Owner salary', monthlyAmount: 5500 },
-        { id: 'office-admin', name: 'Office admin (part-time)', monthlyAmount: 2800 },
-        { id: 'insurance', name: 'Insurance', monthlyAmount: 1400 },
-        { id: 'shop-rent', name: 'Shop & yard rent', monthlyAmount: 1800 },
-        { id: 'software', name: 'Software & phones', monthlyAmount: 450 },
-        { id: 'misc', name: 'Miscellaneous', monthlyAmount: 600 },
+        { id: 'owner-salary', name: 'Owner salary', monthlyAmount: 5000 },
+        { id: 'office-admin', name: 'Office admin (part-time)', monthlyAmount: 2200 },
+        { id: 'insurance', name: 'Insurance', monthlyAmount: 1200 },
+        { id: 'shop-rent', name: 'Shop & yard rent', monthlyAmount: 1500 },
+        { id: 'software', name: 'Software & phones', monthlyAmount: 400 },
+        { id: 'misc', name: 'Miscellaneous', monthlyAmount: 400 },
       ],
     },
     finance: {
@@ -270,7 +270,7 @@ export function createSampleCompany(): CompanyConfig {
       minCashReserve: 15000,
       lineOfCredit: { limit: 40000, annualRate: 0.11 },
       ar: {
-        collectionDaysMean: 18,
+        collectionDaysMean: 21,
         collectionDaysJitter: 0.5,
         badDebtRate: 0.01,
       },

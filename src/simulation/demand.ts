@@ -1,6 +1,6 @@
 /** Demand (simulation-engine §5): visits, one-offs, leads, conversions, churn, cancellation. */
 import type { Id, JobTypeDef, Pricing } from './types';
-import { STREAM, hashString, poissonInverse, rand01 } from './rng';
+import { STREAM, hashString, poissonInverse, rand01, rand01FromPrefix, randPrefix } from './rng';
 import type { CustomerS, DayCtx, JobTypeS, OrderS, SimState } from './state';
 
 /** Tolerance for visit accrual so that k × (1/k) reaches 1 despite float rounding. */
@@ -157,13 +157,19 @@ function byId(a: OrderS, b: OrderS): number {
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
-function oneOffKey(c: CustomerS, jt: JobTypeS): number {
+/** Cached rng prefix for the customer's one-off draws of job type `jt` (seed is fixed within a run). */
+function oneOffPrefix(seed: number, c: CustomerS, jt: JobTypeS): number {
   let k = c.oneOffKeys[jt.idx];
   if (k === undefined) {
-    k = hashString(c.id + ':' + jt.def.id);
+    k = randPrefix(seed, STREAM.ONEOFF_DEMAND, hashString(c.id + ':' + jt.def.id));
     c.oneOffKeys[jt.idx] = k;
   }
   return k;
+}
+
+function churnPrefix(seed: number, c: CustomerS): number {
+  if (Number.isNaN(c.churnPrefix)) c.churnPrefix = randPrefix(seed, STREAM.CHURN, c.key);
+  return c.churnPrefix;
 }
 
 export function currentPriceIndex(st: SimState): number {
@@ -206,7 +212,7 @@ export function demandStep(st: SimState, ctx: DayCtx): void {
     for (let i = 0; i < oneOffs.length; i++) {
       const p = oneOffP[i];
       if (!(p > 0)) continue;
-      const u = rand01(seed, STREAM.ONEOFF_DEMAND, oneOffKey(c, oneOffs[i]), day, 0);
+      const u = rand01FromPrefix(oneOffPrefix(seed, c, oneOffs[i]), day, 0);
       if (u < p) {
         // one order per (customer, type, day) at most from this draw
         fresh.push(createOrder(st, ctx, c, oneOffs[i], 0));
@@ -274,6 +280,7 @@ export function demandStep(st: SimState, ctx: DayCtx): void {
         acquiredDay: day,
         churnedDay: null,
         oneOffKeys: [],
+        churnPrefix: NaN,
       });
       ctx.ops.newCustomers += 1;
     }
@@ -288,7 +295,7 @@ export function demandStep(st: SimState, ctx: DayCtx): void {
     for (const c of st.customers) {
       if (!c.active) continue;
       const h = c.failure === 0 ? h0 : dailyHazardFromMonthly(clamp(k * (1 + w * c.failure), 0, 0.5));
-      if (h > 0 && rand01(seed, STREAM.CHURN, c.key, day, 0) < h) churnCustomer(st, ctx, c);
+      if (h > 0 && rand01FromPrefix(churnPrefix(seed, c), day, 0) < h) churnCustomer(st, ctx, c);
     }
   }
 

@@ -58,11 +58,23 @@ function fmix(h: number): number {
 
 /** Uniform draw in [0, 1). */
 export function rand01(seed: number, stream: number, key: number, day: number, index = 0): number {
+  return rand01FromPrefix(randPrefix(seed, stream, key), day, index);
+}
+
+/**
+ * Hash state after mixing (seed, stream, key). Performance helper for hot loops:
+ * `rand01FromPrefix(randPrefix(s, st, k), d, i) === rand01(s, st, k, d, i)` bit for bit.
+ */
+export function randPrefix(seed: number, stream: number, key: number): number {
   let h = 0x9747b28c;
   h = mix(h, seed);
   h = mix(h, stream);
-  h = mix(h, key);
-  h = mix(h, day);
+  return mix(h, key);
+}
+
+/** Completes a draw from a cached `randPrefix`. */
+export function rand01FromPrefix(prefix: number, day: number, index = 0): number {
+  let h = mix(prefix, day);
   h = mix(h, index);
   h ^= 20;
   return fmix(h) / 4294967296;

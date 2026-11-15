@@ -93,8 +93,10 @@ export interface CustomerS {
   key: number;
   acquiredDay: number;
   churnedDay: number | null;
-  /** hash(customerId + ':' + jobTypeId) per job type index (lazily filled). */
+  /** randPrefix(seed, ONEOFF_DEMAND, hash(customerId + ':' + jobTypeId)) per job type index (lazily filled). */
   oneOffKeys: number[];
+  /** randPrefix(seed, CHURN, key) (lazily filled; NaN = not yet computed). */
+  churnPrefix: number;
 }
 
 export interface JobTypeS {
@@ -299,6 +301,7 @@ export function initState(scenario: Scenario): SimState {
     acquiredDay: 0,
     churnedDay: null,
     oneOffKeys: [],
+    churnPrefix: NaN,
   }));
   let nfa = 0;
   let loanBalance = 0;
