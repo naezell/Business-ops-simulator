@@ -116,7 +116,7 @@ describe('theoreticalWeeklyCapacity (hand-computed)', () => {
   });
 });
 
-describe('scaling rank spreads short sequential ids (ADR-009)', () => {
+describe('scaling rank spreads short sequential ids (ADR-018)', () => {
   // Independent murmur3 fmix32 and FNV-1a, written out here.
   const fnv = (s: string) => {
     let h = 0x811c9dc5;

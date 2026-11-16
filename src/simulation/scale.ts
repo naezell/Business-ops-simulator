@@ -9,7 +9,7 @@ import { learningFactor } from './dynamics';
 
 /**
  * r(x) = fmix32(hashString(x)) / 2³² ∈ [0, 1). The murmur3 finalizer spreads FNV-1a's high bits,
- * which barely change for short ids differing only in their last characters (ADR-009).
+ * which barely change for short ids differing only in their last characters (ADR-018).
  */
 export function hashRank(x: string): number {
   return fmix(hashString(x)) / 4294967296;

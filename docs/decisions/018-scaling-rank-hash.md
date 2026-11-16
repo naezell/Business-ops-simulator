@@ -1,4 +1,4 @@
-# ADR-009 — Customer-base scaling ranks use a mixed hash
+# ADR-018 — Customer-base scaling ranks use a mixed hash
 Status: accepted
 
 **Context.** simulation-design §8 defined the scaling rank as `r(x) = hashString(x) / 2³²` (FNV-1a). For short ids that differ only in their last characters (`c001 … c100`), FNV-1a's high bits barely change, so ranks cluster: on the demo, scales 0.6 and 0.8 both kept the same 31 customers, and the capacity curve's low end was flat. The intent of the rule — each customer kept with probability `m`, nested in `m` — was not met.

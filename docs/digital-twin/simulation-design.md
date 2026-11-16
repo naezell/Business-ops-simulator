@@ -183,7 +183,7 @@ it (re-forming crews is a `move-employee` decision, not a daily reflex).
 
 ## 8. Customer-base scaling and theoretical capacity (pure helpers)
 
-`scaleCustomerBase(scenario, m)` with `r(x) = fmix32(hashString(x)) / 2³²` (murmur3 finalizer; ADR-009):
+`scaleCustomerBase(scenario, m)` with `r(x) = fmix32(hashString(x)) / 2³²` (murmur3 finalizer; ADR-018):
 
 - `m ≤ 1`: keep customer `c` iff `r(c.id) < m`.
 - `m > 1`: keep all; for `k = 1 … ⌈m − 1⌉` add clone `c.id#k` iff `k ≤ ⌊m − 1⌋` or `r(c.id#k) < m − ⌊m⌋` (for the fractional band).
