@@ -63,7 +63,7 @@ the tasks in flight at hand-over time.
 - Employees without a crew are paid the minimum shift every workday.
 - UI: light theme only; no automated UI tests; single ~780 kB bundle (code-split Recharts later); Business view is long on phones.
 - `src/services/derive.ts` mirrors engine action rules for display; replace with the engine's projection helper.
-- Not deployed. No CI workflow yet.
+- Deployed to Cloudflare Pages (`business-ops-simulator.pages.dev`) by direct upload of the `main` build at `c1746ea`. No CI workflow or automatic deploys yet (the Pages GitHub integration is not installed).
 
 ## Outstanding tests
 
