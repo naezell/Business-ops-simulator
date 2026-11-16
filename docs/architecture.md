@@ -44,7 +44,8 @@ src/
     registry.ts      id → IndustryDefinition
     landscaping/
   services/        Glue; the only place that knows about workers and storage.
-    simWorker.ts     Web Worker: runs optimizations off the main thread   (Opus)
+    studyWorker.ts   Web Worker pool member: simulates study batches     (Opus)
+    studyPool.ts     Worker pool used by simClient.runStudyInPool          (Opus)
     simClient.ts     promise API over the worker                          (Opus)
     persistence.ts   load/save scenarios (localStorage)                   (Sonnet)
     store.ts         Zustand store: baseline, draft, results              (Sonnet)

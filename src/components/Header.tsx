@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import { HORIZON_OPTIONS, useStore, type ViewId } from '@/services/store';
+import { useState, type ReactNode } from 'react';
+import { HORIZON_OPTIONS, selectHasUserWork, useStore, type ViewId } from '@/services/store';
 import { Button, Icon, Segmented, cx } from './ui';
 
 export const VIEWS: { id: ViewId; label: string; icon: ReactNode }[] = [
@@ -9,6 +9,66 @@ export const VIEWS: { id: ViewId; label: string; icon: ReactNode }[] = [
   { id: 'optimize', label: 'Optimize', icon: <Icon.Target /> },
 ];
 
+const SAMPLE = '';
+
+/** Chooses between the industry's sample company and its demo scenarios; confirms before discarding work. */
+function ScenarioSwitcher() {
+  const industry = useStore((s) => s.industry);
+  const demoId = useStore((s) => s.demoScenarioId);
+  const hasWork = useStore(selectHasUserWork);
+  const setDemo = useStore((s) => s.setDemoScenario);
+  const [asked, setAsked] = useState<string | null>(null);
+  const demos = industry.demoScenarios ?? [];
+  if (demos.length === 0) return null;
+  const current = demos.find((d) => d.id === demoId);
+  const choose = (value: string) => {
+    const next = value === SAMPLE ? null : value;
+    if (next === demoId) return;
+    if (hasWork) setAsked(value);
+    else setDemo(next);
+  };
+  const askedName = asked === null ? '' : asked === SAMPLE ? `the ${industry.name.toLowerCase()} sample company` : (demos.find((d) => d.id === asked)?.name ?? asked);
+  return (
+    <>
+      <label className="flex min-w-0 items-center gap-2 text-[12.5px] text-muted">
+        <span className="whitespace-nowrap">Company</span>
+        <select
+          aria-label="Company or demo scenario"
+          value={demoId ?? SAMPLE}
+          onChange={(e) => choose(e.target.value)}
+          className="h-8 min-w-0 max-w-[15rem] rounded-md border border-line-strong bg-surface px-2 text-[13px] text-ink"
+          title={current?.description}
+        >
+          <option value={SAMPLE}>{industry.name} sample company</option>
+          {demos.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      {asked !== null && (
+        <div className="flex basis-full flex-wrap items-center gap-2 rounded-md border border-line bg-sunken px-3 py-2 text-[13px] text-ink" role="alertdialog" aria-label="Confirm switching company">
+          <span>Switch to {askedName}? Your draft, adopted changes, conditions and edited assumptions belong to the current company and will be discarded.</span>
+          <Button
+            size="sm"
+            variant="danger"
+            onClick={() => {
+              setDemo(asked === SAMPLE ? null : asked);
+              setAsked(null);
+            }}
+          >
+            Switch and discard
+          </Button>
+          <Button size="sm" onClick={() => setAsked(null)}>
+            Keep current
+          </Button>
+        </div>
+      )}
+    </>
+  );
+}
+
 export function Header() {
   const view = useStore((s) => s.view);
   const setView = useStore((s) => s.setView);
@@ -16,6 +76,7 @@ export function Header() {
   const horizonMonths = useStore((s) => s.horizonMonths);
   const setHorizonMonths = useStore((s) => s.setHorizonMonths);
   const seed = useStore((s) => s.seed);
+  const demoDays = useStore((s) => (s.demoScenarioId ? s.horizonDays : null));
   const reroll = useStore((s) => s.rerollSeed);
 
   return (
@@ -47,13 +108,20 @@ export function Header() {
         </nav>
 
         <div className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-2">
-          <Segmented
-            ariaLabel="Simulation horizon"
-            size="sm"
-            value={horizonMonths}
-            onChange={setHorizonMonths}
-            options={HORIZON_OPTIONS.map((m) => ({ value: m as number, label: `${m} mo`, title: `Simulate the next ${m} months` }))}
-          />
+          <ScenarioSwitcher />
+          {demoDays !== null ? (
+            <span className="text-[12.5px] text-muted" title="This demo scenario has a fixed horizon.">
+              Horizon <span className="num font-medium text-ink">{demoDays} days</span>
+            </span>
+          ) : (
+            <Segmented
+              ariaLabel="Simulation horizon"
+              size="sm"
+              value={horizonMonths}
+              onChange={setHorizonMonths}
+              options={HORIZON_OPTIONS.map((m) => ({ value: m as number, label: `${m} mo`, title: `Simulate the next ${m} months` }))}
+            />
+          )}
           <span className="flex items-center gap-2 text-[12.5px] text-muted">
             <span title="Seed of the random conditions (weather, breakdowns, absences, demand). Baseline and draft share it, so differences come from your decisions.">
               Seed <span className="num font-medium text-ink">{seed}</span>

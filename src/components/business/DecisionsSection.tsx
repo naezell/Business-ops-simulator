@@ -123,7 +123,7 @@ export function PricingSection() {
 
 // ───────────────────────── Scheduling ─────────────────────────
 
-function PolicySlider({ field, hint }: { field: Exclude<keyof Policies, 'routing' | 'autoBackfill' | 'acceptNewCustomers'>; hint?: string }) {
+function PolicySlider({ field, hint }: { field: Exclude<keyof Policies, 'routing' | 'autoBackfill' | 'acceptNewCustomers' | 'floatIdleWorkers'>; hint?: string }) {
   const { base, full } = useProjections();
   const industry = useStore((s) => s.industry);
   const setDraftAction = useStore((s) => s.setDraftAction);

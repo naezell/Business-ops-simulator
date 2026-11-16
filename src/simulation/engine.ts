@@ -4,6 +4,7 @@ import type {
   CrewDayLog,
   CrewStats,
   CustomerSnapshot,
+  CustomerStats,
   DailyRecord,
   Id,
   JobTypeStats,
@@ -24,6 +25,7 @@ import {
   isOvertimeSettlementDay,
   isPayday,
   locStep,
+  ownerDistribution,
   payrollBurden,
   weeklyOvertime,
 } from './finance/formulas';
@@ -43,8 +45,10 @@ import { assetStep, depreciateAll, leaseCostPerDay, payLoans } from './assets';
 import { demandStep } from './demand';
 import { dispatchDay } from './dispatch';
 import { workforceStep } from './workforce';
-import { allAssets, initState, type DayCtx, type SimState } from './state';
+import { allAssets, customerStatsOf, initState, type DayCtx, type SimState } from './state';
 import { validateScenario } from './validate';
+import { coveredBy, forcedWeather, multipliersForDay, shockEventsForDay } from './conditions';
+import { recordAvailability, rulesStep } from './rules';
 
 /** Weather from one draw: u < rainout ⇒ rainout; u < rainout + partial ⇒ partial; else clear. */
 export function weatherFromDraw(u: number, rainoutProb: number, partialProb: number): WeatherState {
@@ -107,8 +111,19 @@ function financeStep(st: SimState, ctx: DayCtx, firstOfMonth: boolean): { shortf
   cf.operatingCashOut = computeOperatingCashOut(inc);
 
   // Line of credit, after all other cash movements.
-  const cashBefore =
+  let cashBefore =
     b.cash + cf.collections - cf.payrollPaid - cf.operatingCashOut - cf.interestPaid - cf.capex + cf.loanProceeds - cf.principalPaid;
+  if (cf.assetSaleProceeds !== 0) cashBefore += cf.assetSaleProceeds;
+  // Owner distribution (simulation-design §6): first of month, day > 0, after loans, before the line of credit.
+  const X = fin.ownerDistributionCashAbove;
+  if (X !== undefined && firstOfMonth && day > 0) {
+    const D = ownerDistribution(cashBefore, X, b.loc);
+    if (D > 0) {
+      cf.ownerDistributions = D;
+      cashBefore -= D;
+      st.events.push({ day, type: 'owner-distribution', amount: D });
+    }
+  }
   const loc = locStep(cashBefore, b.loc, fin.lineOfCredit.limit, fin.lineOfCredit.annualRate);
   inc.interest += loc.interest;
   cf.interestPaid += loc.interest;
@@ -120,7 +135,7 @@ function financeStep(st: SimState, ctx: DayCtx, firstOfMonth: boolean): { shortf
 
   b.cash += cf.netCashFlow;
   b.ar += inc.revenue - cf.collections - inc.badDebt;
-  b.nfa += ctx.assetAdditions - inc.depreciation;
+  b.nfa += ctx.disposedBook === 0 ? ctx.assetAdditions - inc.depreciation : ctx.assetAdditions - inc.depreciation - ctx.disposedBook;
   b.loanBalance += ctx.newBorrowing - cf.principalPaid;
   b.loc += cf.locDraw - cf.locRepay;
   const shortfall = b.cash < 0;
@@ -184,6 +199,7 @@ export const runSimulation: RunSimulation = (scenario: Scenario, options?: Simul
   const warnings = issues.filter((i) => i.severity === 'warning').map((i) => `${i.path}: ${i.message}`);
   const full = (options?.detail ?? 'full') === 'full';
   const st = initState(scenario, options?.drawCache);
+  st.full = full;
   const H = scenario.horizonDays;
   const cal = buildCalendar(st.company.startMonth, H);
 
@@ -208,22 +224,36 @@ export const runSimulation: RunSimulation = (scenario: Scenario, options?: Simul
       ops: zeroOps(),
       assetAdditions: 0,
       newBorrowing: 0,
+      disposedBook: 0,
+      m: multipliersForDay(st.cond, day),
     };
+    // 0. Conditions (simulation-design §1–§2).
+    const cond = st.cond;
+    if (cond) {
+      for (const e of shockEventsForDay(cond, day)) st.events.push({ day, ...e });
+      if (cond.outages.size > 0) for (const a of allAssets(st)) a.out = coveredBy(cond.outages.get(a.id), day);
+      if (cond.absences.size > 0) for (const e of st.employees) e.forcedAbsent = coveredBy(cond.absences.get(e.id), day);
+    }
     // 1. Actions.
     const todays = actionsByDay.get(day);
     if (todays) applyActionsForDay(st, ctx, todays);
+    // 2. Rules (simulation-design §9), against observables as of the end of the previous day.
+    if (st.rules) rulesStep(st, ctx, days);
     const co = st.company;
     // 2. Weather.
-    const w = weatherFromDraw(
-      rand01(st.seed, STREAM.WEATHER, 0, day, 0),
-      co.weather.rainoutProbByMonth[info.month],
-      co.weather.partialProbByMonth[info.month],
-    );
+    const w =
+      forcedWeather(cond, day) ??
+      weatherFromDraw(
+        rand01(st.seed, STREAM.WEATHER, 0, day, 0),
+        co.weather.rainoutProbByMonth[info.month],
+        co.weather.partialProbByMonth[info.month],
+      );
     const workday = isWorkday(day, co.policies.workDaysPerWeek);
     // 3. Workforce.
     workforceStep(st, ctx);
     // 4. Assets.
     if (workday) assetStep(st, ctx);
+    recordAvailability(st, day);
     // 5. Demand.
     demandStep(st, ctx);
     // 6–7. Dispatch and unserved attribution.
@@ -288,6 +318,9 @@ export const runSimulation: RunSimulation = (scenario: Scenario, options?: Simul
     }
   }
   const totals = summarize(days, 0, -1);
+  // One summary per 365-day block from day 0; the last may be partial (types-twin §5).
+  const years: PeriodSummary[] = [];
+  for (let y = 0; y * 365 < H; y++) years.push(summarize(days.slice(y * 365, Math.min(H, (y + 1) * 365)), y, -1));
 
   const jobTypeStats: Record<Id, JobTypeStats> = {};
   for (const jt of st.jobTypes) {
@@ -309,6 +342,7 @@ export const runSimulation: RunSimulation = (scenario: Scenario, options?: Simul
     crewStats,
     events: st.events,
     warnings,
+    years,
   };
   if (full) {
     result.crewLogs = crewLogs;
@@ -322,6 +356,13 @@ export const runSimulation: RunSimulation = (scenario: Scenario, options?: Simul
       churnedDay: c.churnedDay,
     }));
     result.customers = customers;
+    const customerStats: Record<Id, CustomerStats> = {};
+    for (const c of st.customers) {
+      const s = { ...customerStatsOf(c) };
+      s.contribution = s.revenue - s.laborCost - s.materials - s.fuel;
+      customerStats[c.id] = s;
+    }
+    result.customerStats = customerStats;
   }
   return result;
 };

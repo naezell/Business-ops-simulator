@@ -100,4 +100,30 @@ export const landscapingParamMeta: Record<string, ParamMeta> = Object.fromEntrie
 
   // pricing
   meta('pricing.globalMultiplier', 'Global price multiplier', 'Scales every job price in the demonstration company; 1 keeps the current price list.', 'multiplier', 0.5, 2, 0.01, SYNTHETIC),
+
+  // digital twin: workforce dynamics (optional; off when absent from the company)
+  meta('workforce.learningGain', 'Productivity gain from experience', 'Illustrative assumption for the extra work rate an employee gains with long tenure. 0.15 means at most 15% more productive than a new hire, reached gradually.', 'fraction', 0, 0.5, 0.01, ASSUMPTION),
+  meta('workforce.learningDays', 'Learning time constant', 'Illustrative assumption for the tenure, in days, at which about 63% of the experience gain has been reached.', 'days', 0, 365, 1, ASSUMPTION),
+  meta('workforce.fatigueThresholdHours', 'Fatigue threshold', 'Illustrative assumption for the trailing 28-day average of weekly paid hours above which fatigue starts to build. Fatigue rises by 1 for every 10 weekly hours above this threshold.', 'hours', 0, 80, 1, ASSUMPTION),
+  meta('workforce.quitFatigueWeight', 'Quit sensitivity to fatigue', 'Illustrative assumption for how strongly fatigue raises the chance that an employee quits. 1 means fatigue of 1 doubles the base quit chance.', 'multiplier', 0, 5, 0.1, ASSUMPTION),
+  meta('workforce.absenceFatigueWeight', 'Absence sensitivity to fatigue', 'Illustrative assumption for how strongly fatigue raises the chance that an employee is absent on a workday.', 'multiplier', 0, 5, 0.1, ASSUMPTION),
+  meta('workforce.productivityFatigueLoss', 'Productivity loss from fatigue', 'Illustrative assumption for the share of work rate lost per unit of fatigue. Work rate never falls below 70% of normal.', 'multiplier', 0, 1, 0.01, ASSUMPTION),
+  meta('workforce.wageQuitElasticity', 'Wage sensitivity of quits', 'Illustrative assumption for how strongly quits fall when an employee is paid above the market wage for their skill level.', 'elasticity', 0, 5, 0.1, ASSUMPTION),
+  meta('workforce.marketWageBySkill.1', 'Market wage, skill level 1', 'Illustrative assumption for the hourly wage that skill level 1 could earn elsewhere. Used to judge whether pay keeps staff.', 'usd/hour', 10, 40, 0.5, ASSUMPTION),
+  meta('workforce.marketWageBySkill.2', 'Market wage, skill level 2', 'Illustrative assumption for the hourly wage that skill level 2 could earn elsewhere. Used to judge whether pay keeps staff.', 'usd/hour', 10, 40, 0.5, ASSUMPTION),
+  meta('workforce.marketWageBySkill.3', 'Market wage, skill level 3', 'Illustrative assumption for the hourly wage that skill level 3 could earn elsewhere. Used to judge whether pay keeps staff.', 'usd/hour', 10, 40, 0.5, ASSUMPTION),
+  meta('workforce.earlyTenureQuitBoost', 'Early-tenure quit boost', 'Illustrative assumption for the extra quit chance in an employee first months. The extra chance fades with tenure.', 'multiplier', 0, 5, 0.1, ASSUMPTION),
+  meta('workforce.annualRaiseRate', 'Annual raise rate', 'Illustrative assumption for the yearly pay increase applied to every active employee.', 'fraction', 0, 0.2, 0.005, ASSUMPTION),
+
+  // digital twin: customer dynamics
+  meta('market.referralsPerCustomerYear', 'Referrals per customer per year', 'Illustrative assumption for the extra enquiries each active customer brings in a year at perfect service.', 'count', 0, 2, 0.01, ASSUMPTION),
+  meta('market.marketSize', 'Addressable customers', 'Illustrative assumption for the number of properties in the service area. New enquiries fall to zero as the active customer base reaches this number.', 'count', 1, 10000, 1, ASSUMPTION),
+  meta('market.newCustomerChurnBoost', 'New-customer churn boost', 'Illustrative assumption for the extra churn of customers in their first months. The extra churn fades with tenure.', 'multiplier', 0, 10, 0.1, ASSUMPTION),
+
+  // digital twin: asset aging
+  meta('reliability.vehicle.maintenanceAgeFactorPerYear', 'Vehicle upkeep growth per year of age', 'Illustrative assumption for how much each year of vehicle age raises routine maintenance cost. The cost is multiplied by 1 plus this value times the age in years.', 'multiplier', 0, 1, 0.01, ASSUMPTION),
+  meta('reliability.equipment.maintenanceAgeFactorPerYear', 'Equipment upkeep growth per year of age', 'Illustrative assumption for how much each year of equipment age raises routine maintenance cost. The cost is multiplied by 1 plus this value times the age in years.', 'multiplier', 0, 1, 0.01, ASSUMPTION),
+
+  // digital twin: finance dynamics
+  meta('finance.resaleShareOfBookValue', 'Resale share of book value', 'Illustrative assumption for the share of the amount above salvage value (book value minus salvage) that is recovered when an asset is sold.', 'fraction', 0, 1, 0.01, ASSUMPTION),
 ]);

@@ -24,6 +24,7 @@ export const DRIVER_LINES: { line: keyof IncomeStatement; sign: 1 | -1; label: s
   { line: 'hiringCosts', sign: -1, label: 'hiring costs', plural: true },
   { line: 'badDebt', sign: -1, label: 'bad debt', plural: false },
   { line: 'depreciation', sign: -1, label: 'depreciation', plural: false },
+  { line: 'gainOnDisposal', sign: 1, label: 'gain on asset sales', plural: false },
   { line: 'interest', sign: -1, label: 'interest', plural: false },
 ];
 

@@ -2,9 +2,12 @@
 import type { CrewDayLog, RouteStop, UnservedReason, WeatherState } from './types';
 import { STREAM, hashString, rand01 } from './rng';
 import { collectionDelay, isBadDebt } from './finance/formulas';
-import { isDown } from './assets';
+import { assetAgeOnDay, isDown } from './assets';
+import { absenceProbability, agedMaintenanceRate } from './dynamics';
 import { crewRate } from './workforce';
-import type { CrewS, DayCtx, EmpS, EquipS, OrderS, SimState, VehicleS } from './state';
+import { customerStatsOf, type CrewS, type DayCtx, type EmpS, type EquipS, type OrderS, type SimState, type VehicleS } from './state';
+import { scaleProbability, shockedCollectionDelay } from './conditions';
+import { bookUpkeep } from './rules';
 
 /** Tolerance on clock-limit comparisons (float noise only). */
 export const CLOCK_EPS = 1e-9;
@@ -106,15 +109,21 @@ export function dispatchDay(st: SimState, ctx: DayCtx, weather: WeatherState, fu
   const rainout = weather === 'rainout';
   const partial = weather === 'partial';
   const cutoff = co.weather.partialDayFraction * pol.shiftHours;
-  const rf = costs.roadFactor;
+  const M = ctx.m;
+  // A travel-time shock scales road distance (simulation-design §2), hence time, miles, fuel and upkeep.
+  const rf = M['travel-time'] === 1 ? costs.roadFactor : costs.roadFactor * M['travel-time'];
   const speed = costs.avgSpeedMph;
   const ops = ctx.ops;
   const inc = ctx.inc;
 
   // 1. Absences: one draw per active employee per workday.
+  const absenceP = scaleProbability(wf.absenceRate, M.absence);
+  const absDyn = st.wfDyn && (wf.absenceFatigueWeight ?? 0) !== 0;
   for (const e of st.employees) {
     if (!e.active) continue;
-    e.absent = rand01(st.seed, STREAM.ABSENCE, e.key, day, 0) < wf.absenceRate;
+    ops.scheduledHours += pol.shiftHours;
+    const p = absDyn ? absenceProbability(wf.absenceRate, e.fatigue, wf.absenceFatigueWeight, M.absence) : absenceP;
+    e.absent = e.forcedAbsent || rand01(st.seed, STREAM.ABSENCE, e.key, day, 0) < p;
     if (e.absent) ops.absentShifts += 1;
   }
 
@@ -219,9 +228,16 @@ export function dispatchDay(st: SimState, ctx: DayCtx, weather: WeatherState, fu
       }
     }
     for (const it of run.kit) usedE.add(it);
+  }
+
+  // Floating idle workers (simulation-design §7): fill free seats on deployed crews from the pool.
+  const floaters = pol.floatIdleWorkers ? floatIdle(st, runs) : null;
+
+  for (const run of runs) {
+    if (run.status !== 'fielded') continue;
     run.n = run.deployed.length;
     run.rate = crewRate(
-      run.deployed.map((e) => ({ productivity: e.productivity, tenureDays: day - e.hireDay })),
+      run.deployed.map((e) => ({ productivity: st.wfDyn ? e.productivity * e.prodMult : e.productivity, tenureDays: day - e.hireDay })),
       wf.rampDays,
       wf.rampStartProductivity,
       wf.crewSizeCoordinationLoss,
@@ -263,7 +279,10 @@ export function dispatchDay(st: SimState, ctx: DayCtx, weather: WeatherState, fu
     if (o.status !== 'open') return -1;
     const d = o.jt.def;
     let tBack = o.tBack;
-    if (tBack < 0) tBack = o.tBack = travelTime(o.x, o.y, 0, 0, rf, speed);
+    if (tBack < 0 || o.tBackRf !== rf) {
+      tBack = o.tBack = travelTime(o.x, o.y, 0, 0, rf, speed);
+      o.tBackRf = rf;
+    }
     const D = o.remaining / r.rate;
     // Cheap lower bound (tIn ≥ stop overhead) before computing the inbound leg.
     if (r.clock + stopOH + D + tBack > L + CLOCK_EPS && (!d.splittable || L - r.clock - stopOH - tBack < MIN_SPLIT_HOURS - CLOCK_EPS))
@@ -336,7 +355,10 @@ export function dispatchDay(st: SimState, ctx: DayCtx, weather: WeatherState, fu
     r.y = 0;
   };
   const burden = wf.payrollBurdenRate;
-  const fuelPrice = costs.fuelPricePerGallon;
+  const fuelPrice = M['fuel-price'] === 1 ? costs.fuelPricePerGallon : costs.fuelPricePerGallon * M['fuel-price'];
+  const maintM = M['maintenance-cost'];
+  const vAge = co.reliability.vehicle.maintenanceAgeFactorPerYear;
+  const eAge = co.reliability.equipment.maintenanceAgeFactorPerYear;
   for (;;) {
     let r: CrewRun | null = null;
     for (const c of fielded) if (!c.closed && (r === null || c.clock < r.clock)) r = c;
@@ -360,8 +382,10 @@ export function dispatchDay(st: SimState, ctx: DayCtx, weather: WeatherState, fu
     r.y = o.y;
     if (!o.started) {
       o.started = true;
-      inc.materials += o.materials;
-      o.jt.stats.materials += o.materials;
+      const mat = M['materials-cost'] === 1 ? o.materials : o.materials * M['materials-cost'];
+      inc.materials += mat;
+      o.jt.stats.materials += mat;
+      if (st.full) customerStatsOf(o.cust).materials += mat;
     }
     const gal = f.hours * d.equipmentFuelGalPerHour;
     r.equipGallons += gal;
@@ -374,8 +398,16 @@ export function dispatchDay(st: SimState, ctx: DayCtx, weather: WeatherState, fu
     js.laborCost += wageSum * (f.hours + f.tIn) * (1 + burden);
     const vMpg = (r.vehicle as VehicleS).mpg;
     js.fuel += (gal + (vMpg > 0 ? milesIn / vMpg : 0)) * fuelPrice;
+    if (st.full) {
+      const cs = customerStatsOf(o.cust);
+      cs.onSiteHours += r.n * f.hours;
+      cs.travelHours += r.n * f.tIn;
+      cs.laborCost += wageSum * (f.hours + f.tIn) * (1 + burden);
+      cs.fuel += (gal + (vMpg > 0 ? milesIn / vMpg : 0)) * fuelPrice;
+    }
     let completed = false;
     if (f.kind === 'full') {
+      ops.completedLaborHours += o.remaining;
       o.remaining = 0;
       o.status = 'completed';
       completed = true;
@@ -383,6 +415,7 @@ export function dispatchDay(st: SimState, ctx: DayCtx, weather: WeatherState, fu
       r.revenue += o.price;
       r.jobsCompleted += 1;
     } else {
+      ops.completedLaborHours += f.hours * r.rate;
       o.remaining -= f.hours * r.rate;
     }
     if (full) {
@@ -407,13 +440,14 @@ export function dispatchDay(st: SimState, ctx: DayCtx, weather: WeatherState, fu
   }
 
   // 7. Unserved attribution.
-  attributeUnserved(st, ctx, runs, fielded, rainout, partial, cutoff);
+  attributeUnserved(st, ctx, runs, fielded, rainout, partial, cutoff, rf);
 
   // Hours, wages, vehicle and equipment costs.
   const minPaid = pol.minPaidHoursPerShift;
   const idlePay = rainout ? pol.rainoutPaidHours : minPaid;
   const pay = (e: EmpS, paid: number, onSite: number, travel: number, cs: CrewS | null) => {
     e.weekHours += paid;
+    if (e.hist) e.hist[day % 28] += paid;
     inc.directLabor += e.wage * paid;
     ops.paidHours += paid;
     ops.onSiteHours += onSite;
@@ -437,8 +471,11 @@ export function dispatchDay(st: SimState, ctx: DayCtx, weather: WeatherState, fu
       cs.milesDriven += r.miles;
       ops.milesDriven += r.miles;
       const v = r.vehicle as VehicleS;
-      inc.fuel += ((v.mpg > 0 ? r.miles / v.mpg : 0) + r.equipGallons) * costs.fuelPricePerGallon;
-      inc.maintenance += r.miles * v.maintPerMile;
+      inc.fuel += ((v.mpg > 0 ? r.miles / v.mpg : 0) + r.equipGallons) * fuelPrice;
+      const upkeep = r.miles * agedMaintenanceRate(v.maintPerMile, vAge, assetAgeOnDay(v.a, day));
+      const vu = maintM === 1 ? upkeep : upkeep * maintM;
+      inc.maintenance += vu;
+      bookUpkeep(st, v.a, day, vu);
     } else {
       for (const e of r.present) pay(e, idlePay, 0, 0, r.crew);
       if (r.status !== 'fielded') {
@@ -450,13 +487,17 @@ export function dispatchDay(st: SimState, ctx: DayCtx, weather: WeatherState, fu
   // Equipment hours → maintenance.
   for (const it of st.equipment) {
     if (it.hoursToday > 0) {
-      inc.maintenance += it.hoursToday * it.maintPerHour;
+      const upkeep = it.hoursToday * agedMaintenanceRate(it.maintPerHour, eAge, assetAgeOnDay(it.a, day));
+      const eu = maintM === 1 ? upkeep : upkeep * maintM;
+      inc.maintenance += eu;
+      bookUpkeep(st, it.a, day, eu);
       it.hoursToday = 0;
     }
   }
-  // Employees without a crew: paid the minimum shift (idle) when present.
+  // Employees without a crew: paid the minimum shift (idle) when present (floaters are paid by their crew).
   for (const e of st.employees) {
     if (!e.active || e.absent || e.crewId !== null) continue;
+    if (floaters && floaters.has(e)) continue;
     pay(e, minPaid, 0, 0, null);
   }
 
@@ -486,6 +527,57 @@ export function dispatchDay(st: SimState, ctx: DayCtx, weather: WeatherState, fu
   return { logs };
 }
 
+/**
+ * §7 pool: present members of crews that cannot deploy, seat-overflow members and present
+ * employees with no crew, ordered by skill (descending) then config order. Each joins the deployed
+ * crew with a free seat and the fewest deployed members (ties: crew config order). Returns the
+ * employees who floated; they are removed from their origin's lists so they are paid once.
+ */
+function floatIdle(st: SimState, runs: CrewRun[]): Set<EmpS> {
+  const order = new Map<EmpS, number>();
+  st.employees.forEach((e, i) => order.set(e, i));
+  const origin = new Map<EmpS, { run: CrewRun | null; list: 'present' | 'overflow' | null }>();
+  const pool: EmpS[] = [];
+  for (const r of runs) {
+    if (r.status === 'fielded') {
+      for (const e of r.overflow) {
+        pool.push(e);
+        origin.set(e, { run: r, list: 'overflow' });
+      }
+    } else {
+      for (const e of r.present) {
+        pool.push(e);
+        origin.set(e, { run: r, list: 'present' });
+      }
+    }
+  }
+  for (const e of st.employees) {
+    if (!e.active || e.absent || e.crewId !== null) continue;
+    pool.push(e);
+    origin.set(e, { run: null, list: null });
+  }
+  pool.sort((a, b) => b.skill - a.skill || (order.get(a) as number) - (order.get(b) as number));
+  const floated = new Set<EmpS>();
+  for (const e of pool) {
+    let best: CrewRun | null = null;
+    for (const r of runs) {
+      if (r.status !== 'fielded') continue;
+      const seats = Math.max(0, Math.floor((r.vehicle as VehicleS).seats));
+      if (r.deployed.length >= seats) continue;
+      if (best === null || r.deployed.length < best.deployed.length) best = r;
+    }
+    if (!best) continue;
+    best.deployed.push(e);
+    floated.add(e);
+    const o = origin.get(e) as { run: CrewRun | null; list: 'present' | 'overflow' | null };
+    if (o.run && o.list) {
+      const l = o.run[o.list];
+      l.splice(l.indexOf(e), 1);
+    }
+  }
+  return floated;
+}
+
 /** Revenue, lateness, invoice for a completed order. */
 function completeOrder(st: SimState, ctx: DayCtx, o: OrderS): void {
   const day = ctx.day;
@@ -494,13 +586,21 @@ function completeOrder(st: SimState, ctx: DayCtx, o: OrderS): void {
   ctx.ops.jobsCompleted += 1;
   o.jt.stats.jobsCompleted += 1;
   o.jt.stats.revenue += o.price;
+  if (st.full) {
+    const cs = customerStatsOf(o.cust);
+    cs.jobsCompleted += 1;
+    cs.revenue += o.price;
+  }
   if (day > o.createdDay + d.lateAfterDays) {
     ctx.ops.jobsLate += 1;
     o.cust.failure += 0.5;
   }
   const ar = st.company.finance.ar;
   const key = hashString(o.id);
-  const delay = collectionDelay(ar.collectionDaysMean, ar.collectionDaysJitter, rand01(st.seed, STREAM.COLLECTION, key, day, 0));
+  const delay = shockedCollectionDelay(
+    collectionDelay(ar.collectionDaysMean, ar.collectionDaysJitter, rand01(st.seed, STREAM.COLLECTION, key, day, 0)),
+    ctx.m['collection-days'],
+  );
   const bad = ar.badDebtRate > 0 && isBadDebt(ar.badDebtRate, rand01(st.seed, STREAM.BAD_DEBT, key, day, 0));
   const cd = day + delay;
   let list = st.invoices.get(cd);
@@ -519,9 +619,11 @@ function attributeUnserved(
   rainout: boolean,
   partial: boolean,
   cutoff: number,
+  rf: number,
 ): void {
   const u = ctx.ops.unservedHoursByReason;
-  const costs = st.company.costs;
+  const c0 = st.company.costs;
+  const costs = rf === c0.roadFactor ? c0 : { ...c0, roadFactor: rf };
   const anyVehicleFail = runs.some((r) => r.status === 'vehicle');
   for (const o of st.open) {
     if (o.status !== 'open' || o.createdDay > ctx.day) continue;

@@ -3,6 +3,7 @@ import type {
   CashFlowStatement,
   CompanyConfig,
   CrewStats,
+  CustomerStats,
   EquipmentSpec,
   Id,
   IncomeStatement,
@@ -17,6 +18,9 @@ import type {
 import { hashString } from './rng';
 import { initialChurnTable, initialOneOffTable, oneOffPrefix, type DrawTable } from './schedule';
 import { dailyDepreciation, dailyFromMonthly, loanPayment, openingBookValue } from './finance/formulas';
+import { NO_SHOCK, initConditions, type CondState, type ShockMultipliers } from './conditions';
+import { initRules, type RulesState } from './rules';
+import { workforceDynamicsOn } from './dynamics';
 
 export interface EmpS {
   id: Id;
@@ -32,6 +36,14 @@ export interface EmpS {
   /** Paid hours in the current overtime week. */
   weekHours: number;
   absent: boolean;
+  /** Forced absent today by an `absence` shock (set by the conditions step). */
+  forcedAbsent: boolean;
+  /** Workforce dynamics (simulation-design §3), set daily by the workforce step when enabled. */
+  fatigue: number;
+  /** learn × fatigue factor on productivity (1 when dynamics are off). */
+  prodMult: number;
+  /** Paid hours of the last 28 days, slot = day mod 28 (only when fatigue is enabled). */
+  hist?: Float64Array;
 }
 
 export interface LoanS {
@@ -57,6 +69,12 @@ export interface AssetS {
   /** Unavailable while day < downUntil. */
   downUntil: number;
   loan: LoanS | null;
+  /** Unavailable today because of an `outage` shock (set by the conditions step). */
+  out: boolean;
+  /** Days unavailable (kept only when a rule observes asset downtime). */
+  downDays?: number[];
+  /** [day, amount] of routine maintenance and repairs booked to this asset (kept only when a rule needs it). */
+  upkeep?: [number, number][];
 }
 
 export interface VehicleS {
@@ -108,6 +126,8 @@ export interface CustomerS {
   oneOffKeys: Int32Array;
   /** randPrefix(seed, CHURN, key) (lazily filled; NaN = not yet computed). */
   churnPrefix: number;
+  /** Per-customer statistics (detail 'full' only, created on first use). */
+  stats?: CustomerStats;
 }
 
 export interface JobTypeS {
@@ -137,6 +157,8 @@ export interface OrderS {
   sector: number;
   /** Cached travel time back to the depot; −1 until computed. */
   tBack: number;
+  /** Road factor tBack was computed with (a travel-time shock changes it). */
+  tBackRf: number;
 }
 
 export interface InvoiceS {
@@ -172,7 +194,14 @@ export interface DayCtx {
   ops: OpsMetrics;
   assetAdditions: number;
   newBorrowing: number;
+  /** Book value of assets disposed of today (leaves net fixed assets, simulation-design §6). */
+  disposedBook: number;
+  /** Today's shock multipliers (NO_SHOCK on unshocked days). */
+  m: Readonly<ShockMultipliers>;
 }
+
+/** All-ones multipliers for contexts built outside the daily loop. */
+export const NO_SHOCK_CTX = NO_SHOCK;
 
 export interface SimState {
   seed: number;
@@ -204,6 +233,29 @@ export interface SimState {
   oneOffTable: DrawTable;
   /** Day-0 customers' churn draws below CHURN_SCHEDULE_MAX_U, by day (schedule.ts). */
   churnTable: DrawTable;
+  /** Shock state; null when the scenario has no shocks. */
+  cond: CondState | null;
+  /** Decision rules; null when the scenario has none. */
+  rules: RulesState | null;
+  /** Per-employee workforce dynamics enabled (simulation-design §3). */
+  wfDyn: boolean;
+  /** detail 'full': keep per-customer statistics. */
+  full: boolean;
+}
+
+export function customerStatsOf(c: CustomerS): CustomerStats {
+  return (c.stats ??= {
+    customerId: c.id,
+    jobsCompleted: 0,
+    jobsCancelled: 0,
+    revenue: 0,
+    laborCost: 0,
+    materials: 0,
+    fuel: 0,
+    contribution: 0,
+    onSiteHours: 0,
+    travelHours: 0,
+  });
 }
 
 export function newCrewStats(id: Id, name: string): CrewStats {
@@ -260,6 +312,7 @@ export function openingAsset(id: Id, f: FinanceLike): AssetS {
     dailyDep: leased ? 0 : dailyDepreciation(f.purchasePrice, f.salvageValue, f.usefulLifeYears),
     downUntil: 0,
     loan: null,
+    out: false,
   };
   if (f.financing.kind === 'loan') {
     const L = f.financing;
@@ -299,6 +352,9 @@ export function initState(scenario: Scenario, drawCache?: DrawCache | null): Sim
     key: hashString(e.id),
     weekHours: 0,
     absent: false,
+    forcedAbsent: false,
+    fatigue: 0,
+    prodMult: 1,
   }));
   const crews: CrewS[] = company.crews.map((c) => ({
     id: c.id,
@@ -375,6 +431,10 @@ export function initState(scenario: Scenario, drawCache?: DrawCache | null): Sim
       drawCache,
     ),
     churnTable: initialChurnTable(scenario.seed, customerIds, scenario.horizonDays, drawCache),
+    cond: initConditions(scenario.shocks),
+    rules: initRules(scenario.rules, { activeCustomers: customers.length, activeEmployees: employees.length }),
+    wfDyn: workforceDynamicsOn(company.workforce),
+    full: false,
   };
   return st;
 }

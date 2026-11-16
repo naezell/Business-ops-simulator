@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
 import { Bar, CartesianGrid, ComposedChart, Line, LineChart, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { buildCalendar } from '@/simulation';
-import { useStore } from '@/services/store';
+import { selectHasDraft, useStore } from '@/services/store';
 import {
   COST_GROUPS,
   INCOME_ROWS,
+  type IncomeRow,
   cashBridge,
   cashSeries,
   jobTypeRows,
@@ -15,6 +16,8 @@ import {
 } from '@/services/derive';
 import { MONTHS, dayLabel, money, moneyCompact, num, percent, signedMoney, signedPoints, signedRelative } from '@/services/format';
 import { Card, DeltaText, Notice, Segmented, StatTile, cx } from '@/components/ui';
+import { SyntheticLabel } from '@/components/SyntheticLabel';
+import { LongRunCharts, YearlyTable } from '@/components/financials/LongRun';
 
 // ───────────────────────── KPI row ─────────────────────────
 
@@ -159,6 +162,12 @@ function PnlTable({ hasDraft, showDraft }: { hasDraft: boolean; showDraft: boole
   const r = showDraft ? draft : baseline;
   const bt = baseline.totals.income;
   const dt = draft.totals.income;
+  const showGain = bt.gainOnDisposal !== 0 || dt.gainOnDisposal !== 0;
+  const rows = useMemo<IncomeRow[]>(() => {
+    if (!showGain) return INCOME_ROWS;
+    const at = INCOME_ROWS.findIndex((x) => x.key === 'depreciation') + 1;
+    return [...INCOME_ROWS.slice(0, at), { key: 'gainOnDisposal', label: 'Gain (loss) on asset sales', kind: 'revenue' }, ...INCOME_ROWS.slice(at)];
+  }, [showGain]);
 
   return (
     <Card
@@ -207,7 +216,7 @@ function PnlTable({ hasDraft, showDraft }: { hasDraft: boolean; showDraft: boole
             </tr>
           </thead>
           <tbody>
-            {INCOME_ROWS.map((row) => {
+            {rows.map((row) => {
               const sub = row.kind === 'subtotal';
               const better = row.kind === 'cost' ? 'lower' : 'higher';
               const a = bt[row.key];
@@ -263,7 +272,9 @@ function CashChart({ showDraft, hasDraft }: { showDraft: boolean; hasDraft: bool
   const payDays = useMemo(() => payrollDays(r), [r]);
   const monthTicks = useMemo(() => {
     const cal = buildCalendar(startMonth, r.horizonDays);
-    return cal.filter((c) => c.dayOfMonth === 1).map((c) => c.day);
+    const firsts = cal.filter((c) => c.dayOfMonth === 1).map((c) => c.day);
+    const step = r.horizonDays > 730 ? 6 : r.horizonDays > 365 ? 3 : 1;
+    return firsts.filter((_, i) => i % step === 0);
   }, [startMonth, r.horizonDays]);
   const cal = useMemo(() => buildCalendar(startMonth, r.horizonDays), [startMonth, r.horizonDays]);
 
@@ -373,7 +384,19 @@ function CashChart({ showDraft, hasDraft }: { showDraft: boolean; hasDraft: bool
 function Bridge({ showDraft }: { showDraft: boolean }) {
   const r = useStore((s) => (showDraft ? s.draftResult : s.baselineResult));
   const startingCash = useStore((s) => s.company.finance.startingCash);
-  const steps = useMemo(() => cashBridge(r), [r]);
+  const showExtras = useStore((s) => s.baselineResult.totals.cashFlow.assetSaleProceeds !== 0 || s.draftResult.totals.cashFlow.assetSaleProceeds !== 0 || s.baselineResult.totals.cashFlow.ownerDistributions !== 0 || s.draftResult.totals.cashFlow.ownerDistributions !== 0);
+  const steps = useMemo(() => {
+    const base = cashBridge(r);
+    if (!showExtras) return base;
+    const cf = r.totals.cashFlow;
+    const at = base.findIndex((x) => x.key === 'loc') + 1;
+    return [
+      ...base.slice(0, at),
+      { key: 'assetSales', label: 'Asset sale proceeds', value: cf.assetSaleProceeds, kind: 'in' as const },
+      { key: 'distributions', label: 'Owner distributions', value: -cf.ownerDistributions, kind: 'out' as const },
+      ...base.slice(at),
+    ];
+  }, [r, showExtras]);
   const geo = useMemo(() => {
     let run = 0;
     const rows = steps.map((s) => {
@@ -514,11 +537,12 @@ function JobTypeTable({ showDraft }: { showDraft: boolean }) {
 // ───────────────────────── Page ─────────────────────────
 
 export function FinancialsPage() {
-  const hasDraft = useStore((s) => s.draftActions.length > 0);
+  const hasDraft = useStore(selectHasDraft);
   const [which, setWhich] = useState<'baseline' | 'draft'>('draft');
   const showDraft = hasDraft && which === 'draft';
   return (
     <div className="space-y-4">
+      <SyntheticLabel />
       {hasDraft && (
         <div className="flex flex-wrap items-center gap-3">
           <span className="text-[13px] text-muted">Showing</span>
@@ -548,6 +572,8 @@ export function FinancialsPage() {
           <CashChart showDraft={showDraft} hasDraft={hasDraft} />
         </Card>
       </div>
+      <YearlyTable hasDraft={hasDraft} />
+      <LongRunCharts showDraft={showDraft} hasDraft={hasDraft} />
       <PnlTable hasDraft={hasDraft} showDraft={showDraft} />
       <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
         <Card title="Where the cash went" subtitle="Cash-flow bridge for the whole horizon, in US dollars.">

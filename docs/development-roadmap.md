@@ -20,17 +20,17 @@ UI and optimizer (engine supports them), growth-strategy comparison, seasonal st
 
 ## Digital twin (next programme of work)
 
-Design complete; implementation **not started**. Documents: `docs/digital-twin/`.
+Design complete; implementation **in progress** on branch `claude/digital-twin`. Documents: `docs/digital-twin/`.
 Plan and task ids: `docs/digital-twin/implementation-plan.md`.
 
 | Milestone | Tasks | Status |
 |---|---|---|
 | Design: assessment, simulation and optimization design, contracts, ADR-009…017, plan, handoff; contract files `types-twin.ts`, `study-types.ts` | — | done |
-| M1 Safe to change | E0, H10, S7, S8 | not started |
-| M2 The world and reactions | E3, E4, E5, S9, H12, H14 | not started |
-| M3 Long-run behaviour | E6, E7, E8, S11, H13 | not started |
-| M4 The study | O4–O8, S10, C2 | not started |
-| M5 Milestone demo | O9, S12 | not started |
+| M1 Safe to change | E0, H10, S7, S8 | done — golden master (`tests/regression`), demo scenario `twin-90` (uncalibrated), playback, plan timeline |
+| M2 The world and reactions | E3, E4, E5, S9, H12, H14 | done — shocks, disposal/replacement/distributions and new actions, decision rules, conditions panel, ParamMeta; H12 part 1 (part 2 with E6 formulas in M3) |
+| M3 Long-run behaviour | E6, E7, E8, S11, H13 | done — dynamics, floating, customer stats and scaling helpers, multi-year views, benchmarks B1–B12 (H12 complete) |
+| M4 The study | O4–O8, S10, C2 | done — study engine, worker pool, calibrated demo, Study view (partial results, adopt, cancel) |
+| M5 Milestone demo | O9, S12 | done — Optimize view on the study (old single-worker optimize path retired; `optimize()` kept as a library function), demo switcher, synthetic-data label, rule editor; browser run: first ranked strategies 2.4 s, full default study 4.9 s (4 cores) |
 
 ## Completed features
 

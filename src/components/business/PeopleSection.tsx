@@ -3,6 +3,7 @@ import type { AcquisitionMethod, EquipmentSpec, Id, NewHireSpec, VehicleSpec } f
 import { useStore } from '@/services/store';
 import { METHOD_LABEL, describeFinancing, skillLabel, type PCrew, type PEmployee, type Origin } from '@/services/derive';
 import { money, num, plural } from '@/services/format';
+import { chipDateLabel } from '@/services/planTimeline';
 import { Button, Card, Icon, NumberField, ProvenanceBadge, Segmented, cx } from '../ui';
 import { useProjections } from '../hooks';
 
@@ -12,6 +13,13 @@ function OriginTag({ origin }: { origin: Origin }) {
   if (origin === 'draft') return <span className="rounded bg-accent-soft px-1.5 text-[11px] font-medium text-accent">Draft</span>;
   if (origin === 'adopted') return <span className="rounded bg-[#ece9e0] px-1.5 text-[11px] font-medium text-muted">Adopted</span>;
   return null;
+}
+
+/** "from Day 30 · Wed 30 Jan" for items that start after day 0. */
+function StartTag({ fromDay }: { fromDay: number }) {
+  const startMonth = useStore((s) => s.company.startMonth);
+  if (fromDay <= 0) return null;
+  return <span className="num rounded bg-[#ece9e0] px-1.5 text-[11px] text-muted">from {chipDateLabel(startMonth, fromDay)}</span>;
 }
 
 function tenure(days: number): string {
@@ -46,6 +54,7 @@ function EmployeeRow({ e, crewRemoved }: { e: PEmployee; crewRemoved: boolean })
         <div className="flex flex-wrap items-center gap-1.5 text-ink">
           <span className={cx(e.removed && 'text-faint')}>{e.name}</span>
           {!isBase && <OriginTag origin={e.origin} />}
+          <StartTag fromDay={e.fromDay} />
         </div>
       </td>
       <td className="px-3 py-1.5 text-muted">{skillLabel(e.skill)}</td>
@@ -127,6 +136,7 @@ function CrewPanel({ crew }: { crew: PCrew }) {
           <div className="flex flex-wrap items-center gap-2">
             <h3 className={cx('text-[15px] font-semibold text-ink', removedInDraft && 'line-through')}>{crew.name}</h3>
             <OriginTag origin={crew.origin} />
+            <StartTag fromDay={crew.fromDay} />
             {removedInDraft && <span className="text-[12px] text-bad">Removal in draft</span>}
           </div>
           <p className="mt-0.5 text-[12.5px] leading-snug text-muted">
@@ -380,6 +390,7 @@ export function FleetSection() {
                   <td className="px-4 py-1.5 text-ink">
                     <span className="mr-1.5">{v.name}</span>
                     <OriginTag origin={v.origin} />
+                    <StartTag fromDay={v.fromDay} />
                   </td>
                   <td className="px-3 py-1.5 text-muted">{vehicleCrew(v.id)}</td>
                   <td className="px-3 py-1.5 text-right text-muted">
@@ -427,6 +438,7 @@ export function FleetSection() {
                   <td className="px-4 py-1.5 text-ink">
                     <span className="mr-1.5">{q.name}</span>
                     <OriginTag origin={q.origin} />
+                    <StartTag fromDay={q.fromDay} />
                   </td>
                   <td className="px-3 py-1.5 text-muted">{typeName(q.equipmentTypeId)}</td>
                   <td className="px-3 py-1.5 text-muted">{crewName(q.crewId)}</td>

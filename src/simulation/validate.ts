@@ -1,5 +1,7 @@
 /** Scenario validation (simulation-engine §11). */
 import type { AssetFinance, CompanyConfig, Scenario, ValidateScenario, ValidationIssue } from './types';
+import { SHOCK_TARGETS } from './conditions';
+import { EACH, OBSERVABLES, SCOPED_OBSERVABLES, mentionsEach } from './rules';
 
 /** Numeric leaves allowed to be negative (positions and elasticities). */
 const NEGATIVE_OK = /(^|\.)(x|y)$|Elasticity$/;
@@ -140,6 +142,88 @@ function companyIssues(c: CompanyConfig, out: ValidationIssue[]): void {
   if (c.employees.length === 0) out.push({ severity: 'warning', path: 'company.employees', message: 'company has no employees' });
 }
 
+const SHOCK_TARGET_SET = new Set<string>(SHOCK_TARGETS);
+const WEATHER_STATES = new Set(['clear', 'partial', 'rainout']);
+
+/** Shocks (simulation-design §2, IC §3 F): windows, factors, targets and referenced ids. */
+function shockIssues(scenario: Scenario, out: ValidationIssue[]): void {
+  const shocks = scenario.shocks;
+  if (!shocks) return;
+  const c = scenario.company;
+  const assets = new Set([...c.vehicles.map((v) => v.id), ...c.equipment.map((e) => e.id)]);
+  const employees = new Set(c.employees.map((e) => e.id));
+  shocks.forEach((s, i) => {
+    const p = `shocks[${i}]`;
+    if (!Number.isInteger(s.fromDay) || s.fromDay < 0) out.push({ severity: 'error', path: `${p}.fromDay`, message: 'must be an integer >= 0' });
+    if (!Number.isInteger(s.toDay) || !(s.toDay > s.fromDay)) out.push({ severity: 'error', path: `${p}.toDay`, message: 'must be an integer > fromDay' });
+    switch (s.type) {
+      case 'multiplier':
+        if (!SHOCK_TARGET_SET.has(s.target)) out.push({ severity: 'error', path: `${p}.target`, message: `unknown shock target ${s.target}` });
+        if (!Number.isFinite(s.factor) || s.factor < 0) out.push({ severity: 'error', path: `${p}.factor`, message: 'must be a finite number >= 0' });
+        break;
+      case 'outage':
+        if (!assets.has(s.assetId)) out.push({ severity: 'error', path: `${p}.assetId`, message: `unknown asset ${s.assetId}` });
+        break;
+      case 'absence':
+        s.employeeIds.forEach((id, k) => {
+          if (!employees.has(id)) out.push({ severity: 'error', path: `${p}.employeeIds[${k}]`, message: `unknown employee ${id}` });
+        });
+        break;
+      case 'weather':
+        if (!WEATHER_STATES.has(s.state)) out.push({ severity: 'error', path: `${p}.state`, message: `unknown weather state ${s.state}` });
+        break;
+      default:
+        out.push({ severity: 'error', path: `${p}.type`, message: 'unknown shock type' });
+    }
+  });
+}
+
+const OBSERVABLE_SET = new Set<string>(OBSERVABLES);
+const OPS = new Set(['<', '<=', '>', '>=', '==', '!=']);
+
+/** Decision rules (simulation-design §9, IC §3 F). Ids inside `then` are checked when the rule fires. */
+function ruleIssues(scenario: Scenario, out: ValidationIssue[]): void {
+  const rules = scenario.rules;
+  if (!rules) return;
+  const c = scenario.company;
+  const crews = new Set(c.crews.map((x) => x.id));
+  const assets = new Set([...c.vehicles.map((v) => v.id), ...c.equipment.map((e) => e.id)]);
+  const seen = new Set<string>();
+  rules.forEach((r, i) => {
+    const p = `rules[${i}]`;
+    if (seen.has(r.id)) out.push({ severity: 'error', path: `${p}.id`, message: `duplicate rule id ${r.id}` });
+    seen.add(r.id);
+    if (r.forEach !== undefined && !['vehicle', 'equipment', 'crew'].includes(r.forEach))
+      out.push({ severity: 'error', path: `${p}.forEach`, message: 'unknown forEach' });
+    if (!Number.isInteger(r.cooldownDays) || r.cooldownDays < 0) out.push({ severity: 'error', path: `${p}.cooldownDays`, message: 'must be an integer >= 0' });
+    if (!Number.isInteger(r.maxFirings) || r.maxFirings < 0) out.push({ severity: 'error', path: `${p}.maxFirings`, message: 'must be an integer >= 0' });
+    const from = r.activeFromDay ?? 0;
+    if (!Number.isInteger(from) || from < 0) out.push({ severity: 'error', path: `${p}.activeFromDay`, message: 'must be an integer >= 0' });
+    if (r.activeToDay !== undefined && !(Number.isInteger(r.activeToDay) && r.activeToDay > from))
+      out.push({ severity: 'error', path: `${p}.activeToDay`, message: 'must be an integer > activeFromDay' });
+    if (!r.forEach && mentionsEach([r.when, r.then]))
+      out.push({ severity: 'error', path: p, message: `'$each' used without forEach` });
+    if (!Array.isArray(r.then) || r.then.length === 0) out.push({ severity: 'error', path: `${p}.then`, message: 'must list at least one action' });
+    r.when.forEach((cond, k) => {
+      const q = `${p}.when[${k}]`;
+      if (!OBSERVABLE_SET.has(cond.observable)) {
+        out.push({ severity: 'error', path: `${q}.observable`, message: `unknown observable ${cond.observable}` });
+        return;
+      }
+      if (!OPS.has(cond.op)) out.push({ severity: 'error', path: `${q}.op`, message: `unknown operator ${cond.op}` });
+      if (!Number.isFinite(cond.value)) out.push({ severity: 'error', path: `${q}.value`, message: 'must be a finite number' });
+      if (!SCOPED_OBSERVABLES.has(cond.observable)) return;
+      const isCrew = cond.observable === 'crew-size';
+      const id = isCrew ? cond.scope?.crewId : cond.scope?.assetId;
+      if (id === undefined) out.push({ severity: 'error', path: `${q}.scope`, message: `${cond.observable} needs scope.${isCrew ? 'crewId' : 'assetId'}` });
+      else if (id === EACH) {
+        const ok = isCrew ? r.forEach === 'crew' : r.forEach === 'vehicle' || r.forEach === 'equipment';
+        if (!ok) out.push({ severity: 'error', path: `${q}.scope`, message: `'$each' does not match forEach ${r.forEach ?? '(none)'}` });
+      } else if (!(isCrew ? crews : assets).has(id)) out.push({ severity: 'error', path: `${q}.scope`, message: `unknown ${isCrew ? 'crew' : 'asset'} ${id}` });
+    });
+  });
+}
+
 export const validateScenario: ValidateScenario = (scenario: Scenario) => {
   const out: ValidationIssue[] = [];
   if (!Number.isInteger(scenario.horizonDays) || scenario.horizonDays < 1)
@@ -149,5 +233,7 @@ export const validateScenario: ValidateScenario = (scenario: Scenario) => {
     if (!Number.isInteger(a.day) || a.day < 0) out.push({ severity: 'error', path: `actions[${i}].day`, message: 'must be an integer >= 0' });
   });
   companyIssues(scenario.company, out);
+  shockIssues(scenario, out);
+  ruleIssues(scenario, out);
   return out;
 };

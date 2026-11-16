@@ -23,3 +23,8 @@ export {
   POOL_SIZE,
 } from './search';
 export type { SearchContext } from './search';
+
+// Study (optimizer v2, digital twin).
+export { runStudy } from './study/runStudy';
+export { createInProcessBackend, digestOf, variantKey, scenarioFor, runJob } from './study/backend';
+export type * from './study-types';

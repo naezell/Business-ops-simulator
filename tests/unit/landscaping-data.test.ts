@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { landscaping, landscapingJobTypes, landscapingParamMeta } from '../../src/business/landscaping';
+import {
+  createDemoTwinScenario,
+  landscaping,
+  landscapingJobTypes,
+  landscapingParamMeta,
+} from '../../src/business/landscaping';
 import { createSampleCompany } from '../../src/business/landscaping/sampleCompany';
 import { defaultIndustryId, getIndustry, industries } from '../../src/business/registry';
 
@@ -229,12 +234,19 @@ describe('monthly arrays', () => {
 describe('parameter metadata', () => {
   const company = createSampleCompany();
 
-  it('every paramMeta path resolves to a finite number inside [min, max]', () => {
+  // Rule: a path may be absent from the sample company, because the sample does not enable the optional
+  // digital-twin dynamics. Each path must resolve (to a finite number inside [min, max]) on the sample
+  // company or on the twin-90 demo company, and on at least one of them.
+  it('every paramMeta path resolves to a finite number inside [min, max] on the sample company or the twin-90 demo', () => {
+    const demo = createDemoTwinScenario().company;
     const entries = Object.entries(landscapingParamMeta);
     expect(entries.length).toBeGreaterThan(0);
     for (const [key, meta] of entries) {
       expect(meta.path, key).toBe(key);
-      const value = valueAt(company, meta.path);
+      const onSample = valueAt(company, meta.path);
+      const onDemo = valueAt(demo, meta.path);
+      expect(typeof onSample === 'number' || typeof onDemo === 'number', `${meta.path} resolves on neither company`).toBe(true);
+      const value = typeof onSample === 'number' ? onSample : onDemo;
       expect(typeof value, meta.path).toBe('number');
       expect(Number.isFinite(value as number), meta.path).toBe(true);
       expect(value as number, meta.path).toBeGreaterThanOrEqual(meta.min);
@@ -274,8 +286,9 @@ describe('reliability parameter metadata', () => {
 
   it('has exactly one entry for every field under reliability.vehicle and reliability.equipment', () => {
     // 6 numeric fields per group: dailyProb, ageFactorPerYear, repairDaysMin, repairDaysMax, repairCostMin, repairCostMax.
+    // Plus 2 digital-twin maintenance-age paths (one per group), which exist only on the twin-90 demo company.
     const reliabilityPaths = Object.keys(landscapingParamMeta).filter((k) => k.startsWith('reliability.'));
-    expect(reliabilityPaths).toHaveLength(12);
+    expect(reliabilityPaths).toHaveLength(14);
     for (const group of groups) {
       const fields = Object.keys(company.reliability[group]);
       expect(fields, group).toHaveLength(6);

@@ -18,3 +18,5 @@ ADR-009 to ADR-017 (digital twin) are in [`../digital-twin/architecture-decision
 daily step and replay branching (009), shocks (010), decision rules (011), workforce feedback (012),
 simulated long-term customer value (013), disposal and owner distributions (014), staged study (015),
 worker pool (016), capacity and loss by experiment (017).
+
+ADR-018 (customer-base scaling rank hash) is [`018-scaling-rank-hash.md`](018-scaling-rank-hash.md).

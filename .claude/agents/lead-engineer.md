@@ -10,7 +10,7 @@ Before coding read `CLAUDE.md`, `docs/architecture.md` and the spec for the area
 work the documents in `docs/digital-twin/`).
 The specs are normative; `src/*/types.ts` are contracts you implement, not redesign.
 
-You own `src/simulation/**`, `src/optimization/**`, `src/services/simWorker.ts`, `src/services/simClient.ts`, `tests/simulation/**`,
+You own `src/simulation/**`, `src/optimization/**`, `src/services/simClient.ts`, `src/services/studyWorker*.ts`, `src/services/studyPool.ts`, `tests/simulation/**`,
 `tests/optimization/**`, `tests/benchmarks/**`. Do not edit UI files or `src/business/**` data
 except for calibration tasks that say so.
 

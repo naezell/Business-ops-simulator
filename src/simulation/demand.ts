@@ -2,8 +2,10 @@
 import type { Id, JobTypeDef, Pricing } from './types';
 import { STREAM, hashString, poissonInverse, rand01, rand01FromPrefix, randPrefix } from './rng';
 import type { CustomerS, DayCtx, JobTypeS, OrderS, SimState } from './state';
-import { oneOffKeysFor } from './state';
+import { customerStatsOf, oneOffKeysFor } from './state';
 import { SCHEDULE_MAX_P } from './schedule';
+import { scaleProbability } from './conditions';
+import { newCustomerChurnFactor, referralLeadRate, saturationFactor, serviceIndex } from './dynamics';
 
 /** Tolerance for visit accrual so that k × (1/k) reaches 1 despite float rounding. */
 export const ACCRUAL_EPS = 1e-9;
@@ -153,6 +155,7 @@ export function createOrder(st: SimState, ctx: DayCtx, c: CustomerS, jt: JobType
     started: false,
     sector: 0,
     tBack: -1,
+    tBackRf: NaN,
   };
 }
 
@@ -164,6 +167,24 @@ export function churnCustomer(st: SimState, ctx: DayCtx, c: CustomerS): void {
   if (c.planIdx >= 0) st.activePlanCounts[c.planIdx] -= 1;
   c.churnedDay = ctx.day;
   ctx.ops.churnedCustomers += 1;
+  for (const o of st.open) {
+    if (o.status === 'open' && o.cust === c) {
+      o.status = 'withdrawn';
+      ctx.ops.jobsWithdrawn += 1;
+    }
+  }
+}
+
+/**
+ * The company stops serving a customer (drop-customers, simulation-design §6): withdrawn, not churned —
+ * no churn count and no missed-job or failure accounting. Open orders are withdrawn.
+ */
+export function withdrawCustomer(st: SimState, ctx: DayCtx, c: CustomerS): void {
+  if (!c.active) return;
+  c.active = false;
+  st.activeCustomerCount -= 1;
+  if (c.planIdx >= 0) st.activePlanCounts[c.planIdx] -= 1;
+  c.churnedDay = ctx.day;
   for (const o of st.open) {
     if (o.status === 'open' && o.cust === c) {
       o.status = 'withdrawn';
@@ -212,17 +233,25 @@ export function demandStep(st: SimState, ctx: DayCtx): void {
   const direct: { jt: JobTypeS; p: number }[] = [];
   for (const j of st.jobTypes) {
     if (j.def.kind !== 'one-off' || !j.def.offered) continue;
-    const p = oneOffDailyProbability(
-      j.def.annualRatePerCustomer ?? 0,
-      j.def.seasonality[m],
-      priceMultiplier(st.company.pricing, j.def.id),
-      mk.oneOffPriceElasticity,
+    const p = scaleProbability(
+      oneOffDailyProbability(
+        j.def.annualRatePerCustomer ?? 0,
+        j.def.seasonality[m],
+        priceMultiplier(st.company.pricing, j.def.id),
+        mk.oneOffPriceElasticity,
+      ),
+      ctx.m.demand,
     );
     if (!(p > 0)) continue;
     offered.push({ jt: j, p });
     if (p <= SCHEDULE_MAX_P) pSched[j.idx] = p;
     else direct.push({ jt: j, p });
   }
+  const demandM = ctx.m.demand;
+  // Referral inputs (simulation-design §4), measured before today's decay and new customers.
+  const activeAtStart = st.activeCustomerCount;
+  let failureSumAtStart = 0;
+  if ((mk.referralsPerCustomerYear ?? 0) !== 0) for (const c of st.customers) if (c.active) failureSumAtStart += c.failure;
   const fresh: OrderS[] = [];
   const custs = st.customers;
   const n0 = st.initialCustomers;
@@ -236,7 +265,8 @@ export function demandStep(st: SimState, ctx: DayCtx): void {
       const jt = st.jobTypes[c.planIdx];
       const d = jt.def;
       if (d.offered && d.kind === 'recurring' && (d.intervalDays ?? 0) > 0) {
-        c.accrual += d.seasonality[m] / (d.intervalDays as number);
+        const inc = d.seasonality[m] / (d.intervalDays as number);
+        c.accrual += demandM === 1 ? inc : inc * demandM;
         let n = 0;
         while (c.accrual >= 1 - ACCRUAL_EPS) {
           fresh.push(createOrder(st, ctx, c, jt, n++));
@@ -263,13 +293,22 @@ export function demandStep(st: SimState, ctx: DayCtx): void {
   for (const o of fresh) st.open.push(o);
 
   // Leads and conversions.
-  const lambda = leadRatePerDay(
+  const lambda0 = leadRatePerDay(
     mk.organicLeadsPerMonth,
     mk.marketingMaxLeadsPerMonth,
     mk.marketingMonthlySpend,
     mk.marketingSpendScale,
     mk.leadSeasonality[m],
   );
+  let lambdaDyn = lambda0;
+  const refs = mk.referralsPerCustomerYear ?? 0;
+  if (refs !== 0 || mk.marketSize !== undefined) {
+    // simulation-design §4: (λ_base + λ_ref) × saturation, active count and failure scores as of the start of the step.
+    const N = activeAtStart;
+    const lref = refs !== 0 ? referralLeadRate(refs, N, serviceIndex(N > 0 ? failureSumAtStart / N : 0), mk.leadSeasonality[m]) : 0;
+    lambdaDyn = (lambda0 + lref) * saturationFactor(N, mk.marketSize);
+  }
+  const lambda = ctx.m.leads === 1 ? lambdaDyn : lambdaDyn * ctx.m.leads;
   const leads = poissonInverse(lambda, rand01(seed, STREAM.LEADS, 0, day, 0));
   ctx.ops.leads += leads;
   if (leads > 0 && st.company.policies.acceptNewCustomers) {
@@ -331,15 +370,20 @@ export function demandStep(st: SimState, ctx: DayCtx): void {
   // Churn.
   if (mk.baseMonthlyChurn > 0) {
     // monthlyChurnRate with the price term hoisted out of the customer loop (same arithmetic order).
-    const k = mk.baseMonthlyChurn * Math.pow(pIdx, mk.retentionPriceElasticity);
+    const k0 = mk.baseMonthlyChurn * Math.pow(pIdx, mk.retentionPriceElasticity);
+    const k = ctx.m.churn === 1 ? k0 : k0 * ctx.m.churn;
     const w = mk.serviceFailureChurnWeight;
     const h0 = dailyHazardFromMonthly(clamp(k, 0, 0.5));
     // Every hazard is clamped to at most hMax, so a draw >= hMax can never churn: skip the pow() then.
     // The draw is counter-based, so computing it unconditionally changes no other draw.
     const hMax = dailyHazardFromMonthly(0.5);
-    const tryChurn = (c: CustomerS, u: number) => {
+    const boost = mk.newCustomerChurnBoost ?? 0;
+    const tryChurn = (c: CustomerS, u: number, acquired: boolean) => {
       if (u >= hMax) return;
-      const h = c.failure === 0 ? h0 : dailyHazardFromMonthly(clamp(k * (1 + w * c.failure), 0, 0.5));
+      let h: number;
+      if (acquired && boost !== 0)
+        h = dailyHazardFromMonthly(clamp(k * (1 + w * c.failure) * newCustomerChurnFactor(day - c.acquiredDay, boost), 0, 0.5));
+      else h = c.failure === 0 ? h0 : dailyHazardFromMonthly(clamp(k * (1 + w * c.failure), 0, 0.5));
       if (h > 0 && u < h) churnCustomer(st, ctx, c);
     };
     // Day-0 customers in list order from the pre-drawn table (draws < CHURN_SCHEDULE_MAX_U ≥ hMax),
@@ -348,24 +392,25 @@ export function demandStep(st: SimState, ctx: DayCtx): void {
     if (day + 1 < ct.start.length) {
       for (let q = ct.start[day], end = ct.start[day + 1]; q < end; q++) {
         const c = custs[ct.cust[q]];
-        if (c.active) tryChurn(c, ct.us[q]);
+        if (c.active) tryChurn(c, ct.us[q], false);
       }
     }
     for (let ci = n0; ci < custs.length; ci++) {
       const c = custs[ci];
-      if (c.active) tryChurn(c, rand01FromPrefix(churnPrefix(seed, c), day, 0));
+      if (c.active) tryChurn(c, rand01FromPrefix(churnPrefix(seed, c), day, 0), true);
     }
   }
 
   // Cancellation of stale orders (§5.5).
   for (const o of st.open) {
     if (o.status !== 'open') continue;
-    if (day - o.createdDay >= o.jt.def.cancelAfterDays) cancelOrder(ctx, o);
+    if (day - o.createdDay >= o.jt.def.cancelAfterDays) cancelOrder(ctx, o, st.full);
   }
   compactOpen(st);
 }
 
-export function cancelOrder(ctx: DayCtx, o: OrderS): void {
+export function cancelOrder(ctx: DayCtx, o: OrderS, full = false): void {
+  if (full) customerStatsOf(o.cust).jobsCancelled += 1;
   o.status = 'cancelled';
   ctx.ops.jobsCancelled += 1;
   ctx.ops.lostRevenue += o.price;

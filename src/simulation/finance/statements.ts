@@ -29,6 +29,7 @@ export function zeroIncome(): IncomeStatement {
     operatingProfit: 0,
     interest: 0,
     netProfit: 0,
+    gainOnDisposal: 0,
   };
 }
 
@@ -44,6 +45,8 @@ export function zeroCashFlow(): CashFlowStatement {
     locDraw: 0,
     locRepay: 0,
     netCashFlow: 0,
+    assetSaleProceeds: 0,
+    ownerDistributions: 0,
   };
 }
 
@@ -72,6 +75,9 @@ export function zeroOps(): OpsMetrics {
     milesDriven: 0,
     unservedHoursByReason: zeroUnserved(),
     lostRevenue: 0,
+    scheduledHours: 0,
+    completedLaborHours: 0,
+    quits: 0,
   };
 }
 
@@ -80,7 +86,8 @@ export function computeSubtotals(i: IncomeStatement): void {
   i.grossProfit =
     i.revenue - i.directLabor - i.payrollBurden - i.materials - i.fuel - i.maintenance - i.equipmentLeases;
   i.ebitda = i.grossProfit - i.overhead - i.marketing - i.hiringCosts - i.badDebt;
-  i.operatingProfit = i.ebitda - i.depreciation;
+  // simulation-design §6: + gainOnDisposal (exactly the old value when it is 0).
+  i.operatingProfit = i.gainOnDisposal === 0 ? i.ebitda - i.depreciation : i.ebitda - i.depreciation + i.gainOnDisposal;
   i.netProfit = i.operatingProfit - i.interest;
 }
 
@@ -98,7 +105,9 @@ export function computeNetCashFlow(c: CashFlowStatement): number {
     c.loanProceeds -
     c.principalPaid +
     c.locDraw -
-    c.locRepay
+    c.locRepay +
+    c.assetSaleProceeds -
+    c.ownerDistributions
   );
 }
 
@@ -116,6 +125,7 @@ const INCOME_LINES: (keyof IncomeStatement)[] = [
   'badDebt',
   'depreciation',
   'interest',
+  'gainOnDisposal',
 ];
 
 const CASH_LINES: (keyof CashFlowStatement)[] = [
@@ -128,6 +138,8 @@ const CASH_LINES: (keyof CashFlowStatement)[] = [
   'principalPaid',
   'locDraw',
   'locRepay',
+  'assetSaleProceeds',
+  'ownerDistributions',
 ];
 
 /** Sum of income lines; subtotals recomputed from the summed lines. */
@@ -164,6 +176,9 @@ const OPS_NUMERIC: (keyof Omit<OpsMetrics, 'unservedHoursByReason'>)[] = [
   'crewDaysNotDeployed',
   'milesDriven',
   'lostRevenue',
+  'scheduledHours',
+  'completedLaborHours',
+  'quits',
 ];
 
 export function sumOps(items: OpsMetrics[]): OpsMetrics {

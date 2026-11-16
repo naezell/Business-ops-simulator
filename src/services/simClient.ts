@@ -1,21 +1,13 @@
 /**
- * Promise API over the optimization worker (src/services/simWorker.ts).
- * Each call gets its own worker, so `cancel` can simply terminate it.
+ * Client API for the study (optimizer v2): a worker pool simulates, the study orchestrates on the
+ * main thread. The single-worker `optimize()` path was retired in O9 (`optimize()` itself remains
+ * a library function).
  */
 import type { IndustryDefinition } from '../business/types';
-import type { OptimizationProgress, OptimizationRequest, OptimizationResult, OptimizerCatalog } from '../optimization';
-import type { WorkerRequest, WorkerResponse } from './simWorker';
-
-export interface OptimizationHandle {
-  promise: Promise<OptimizationResult>;
-  cancel: () => void;
-}
-
-function abortError(): Error {
-  const e = new Error('Optimization cancelled');
-  e.name = 'AbortError';
-  return e;
-}
+import type { OptimizerCatalog } from '../optimization';
+import { runStudy } from '../optimization';
+import type { StudyProgress, StudyRequest, StudyResult } from '../optimization';
+import { createStudyPool } from './studyPool';
 
 /**
  * The structured-cloneable part of an industry that the optimizer needs.
@@ -34,62 +26,31 @@ export function catalogFromIndustry(industry: IndustryDefinition): OptimizerCata
   };
 }
 
-export function runOptimization(
-  request: OptimizationRequest,
-  onProgress?: (p: OptimizationProgress) => void,
-): OptimizationHandle {
-  const worker = new Worker(new URL('./simWorker.ts', import.meta.url), { type: 'module' });
-  let settled = false;
-  let rejectFn: (e: Error) => void = () => {};
+// ───────────── Study (optimizer v2) ─────────────
 
-  const promise = new Promise<OptimizationResult>((resolve, reject) => {
-    rejectFn = reject;
-    const finish = () => {
-      settled = true;
-      worker.terminate();
-    };
-    worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
-      if (settled) return;
-      const msg = event.data;
-      if (msg.type === 'progress') {
-        onProgress?.(msg.progress);
-      } else if (msg.type === 'result') {
-        finish();
-        resolve(msg.result);
-      } else if (msg.type === 'error') {
-        finish();
-        const e = new Error(msg.message);
-        e.name = msg.name;
-        reject(e);
-      }
-    };
-    worker.onerror = (event: ErrorEvent) => {
-      if (settled) return;
-      finish();
-      reject(new Error(event.message || 'Optimization worker failed'));
-    };
-    worker.onmessageerror = () => {
-      if (settled) return;
-      finish();
-      reject(new Error('Optimization worker sent a message that could not be read'));
-    };
-    // Throws DataCloneError synchronously if the request is not structured-cloneable
-    // (e.g. an IndustryDefinition passed as the catalog): use catalogFromIndustry.
-    try {
-      worker.postMessage({ type: 'optimize', request } satisfies WorkerRequest);
-    } catch (err) {
-      finish();
-      reject(err instanceof Error ? err : new Error(String(err)));
-    }
-  });
+export interface StudyHandle {
+  promise: Promise<StudyResult>;
+  /** Stops the study: workers are terminated and the promise rejects with AbortError. */
+  cancel: () => void;
+}
 
+/**
+ * Runs a study with a worker pool: the study orchestrates on the main thread (it only awaits
+ * batches), the workers simulate. Partial results arrive through `onProgress` after each phase.
+ */
+export function runStudyInPool(request: StudyRequest, onProgress?: (p: StudyProgress) => void, poolSize?: number): StudyHandle {
+  const pool = createStudyPool(request.scenario, poolSize);
+  let stopped = false;
+  const promise = runStudy(request, pool.evaluate, {
+    shouldStop: () => stopped,
+    clock: () => performance.now(),
+    onProgress,
+  }).finally(() => pool.terminate());
   return {
     promise,
     cancel: () => {
-      if (settled) return;
-      settled = true;
-      worker.terminate();
-      rejectFn(abortError());
+      stopped = true;
+      pool.terminate();
     },
   };
 }
