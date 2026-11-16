@@ -11,7 +11,7 @@ any figure. See [docs/product-vision.md](docs/product-vision.md).
 
 ## Status
 
-**Early working version, not deployed.** A complete vertical slice exists for one
+**Early working version, deployed at https://business-ops-simulator.pages.dev** (Cloudflare Pages, manual upload of `main`). A complete vertical slice exists for one
 synthetic landscaping company: the deterministic simulation engine, the
 optimizer, and a four-view interface (Operations, Financials, Business,
 Optimize). All sample data is synthetic and all behavioural parameters are
