@@ -1,10 +1,10 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import type { Objective, StudyResult } from '@/optimization';
-import { scenarioKey, useStore } from '@/services/store';
+import { scenarioKey, selectIsSynthetic, useStore } from '@/services/store';
 import { num } from '@/services/format';
 import { Button, Card, Icon, Notice, Segmented, cx } from '@/components/ui';
 import { BottleneckCard, Tag, scaleOf } from '@/components/optimize/parts';
-import { SyntheticLabel } from '@/components/SyntheticLabel';
+import { CompanyDataLabel } from '@/components/CompanyDataLabel';
 import { BaselineSummary, CapacitySection, LossAttribution, SectionTitle, StrategyCard } from '@/components/optimize/StudySections';
 import { hiddenCount, phaseStates, visibleStrategies } from '@/components/optimize/studyModel';
 
@@ -55,7 +55,7 @@ export function OptimizePage() {
       >
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
-            <SyntheticLabel withNote />
+            <CompanyDataLabel withNote />
           </div>
 
           {(running || result) && <StudyHeader running={running} />}
@@ -283,11 +283,12 @@ function Fold({ title, subtitle, children, id }: { title: string; subtitle: stri
 }
 
 function Honesty() {
+  const synthetic = useStore(selectIsSynthetic);
   return (
     <footer className="rounded-lg border border-line bg-sunken px-4 py-3 text-[12.5px] leading-snug text-muted" aria-label="How to read these results">
       <h2 className="mb-1 text-[12.5px] font-semibold text-ink">How to read these results</h2>
       <ul className="list-disc space-y-1 pl-4">
-        <li>The company is a synthetic demonstration. Default values are illustrative assumptions, not benchmarks, unless you replaced them with your own numbers.</li>
+        <li>{synthetic ? 'The company uses synthetic demonstration data.' : 'The company starts with your imported inputs.'} Business → Assumptions shows which inputs use illustrative industry assumptions.</li>
         <li>Nothing here is a forecast. Figures describe what the simulation produced under the conditions and assumptions tested.</li>
         <li>Loss figures are upper bounds: they show the most a source could cost if it vanished completely, and they overlap, so they do not add up.</li>
         <li>The search is a smart shortcut, not a proof. It finds the best strategy among those it generated and tried, not necessarily the best that exists.</li>

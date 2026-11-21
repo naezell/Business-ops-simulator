@@ -1,4 +1,4 @@
-import { Component, type ReactNode } from 'react';
+import { Component, useState, type ReactNode } from 'react';
 import { useStore } from '@/services/store';
 import { Header, MobileNav } from '@/components/Header';
 import { ScenarioBar } from '@/components/ScenarioBar';
@@ -7,6 +7,7 @@ import { OperationsPage } from '@/pages/OperationsPage';
 import { FinancialsPage } from '@/pages/FinancialsPage';
 import { BusinessPage } from '@/pages/BusinessPage';
 import { OptimizePage } from '@/pages/OptimizePage';
+import { CompanyGuidePage } from '@/pages/CompanyGuidePage';
 import { clearPersisted } from '@/services/persistence';
 
 class Boundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -46,21 +47,27 @@ class Boundary extends Component<{ children: ReactNode }, { error: Error | null 
 
 export default function App() {
   const view = useStore((s) => s.view);
+  const [guideOpen, setGuideOpen] = useState(false);
+  const closeGuide = () => setGuideOpen(false);
   return (
     <div className="min-h-screen pb-20 md:pb-8">
       <div className="no-print xl:sticky xl:top-0 xl:z-30 xl:shadow-[0_1px_0_var(--color-line)]">
-        <Header />
-        <ScenarioBar />
+        <Header guideOpen={guideOpen} openGuide={() => setGuideOpen(true)} closeGuide={closeGuide} />
+        {!guideOpen && <ScenarioBar />}
       </div>
       <main className="mx-auto max-w-[1500px] px-4 py-4 md:px-6 md:py-5">
         <Boundary>
-          {view === 'operations' && <OperationsPage />}
-          {view === 'financials' && <FinancialsPage />}
-          {view === 'business' && <BusinessPage />}
-          {view === 'optimize' && <OptimizePage />}
+          {guideOpen ? <CompanyGuidePage onBack={closeGuide} /> : (
+            <>
+              {view === 'operations' && <OperationsPage />}
+              {view === 'financials' && <FinancialsPage />}
+              {view === 'business' && <BusinessPage />}
+              {view === 'optimize' && <OptimizePage />}
+            </>
+          )}
         </Boundary>
       </main>
-      <MobileNav />
+      <MobileNav guideOpen={guideOpen} closeGuide={closeGuide} />
     </div>
   );
 }

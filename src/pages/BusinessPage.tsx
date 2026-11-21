@@ -7,7 +7,7 @@ import { PlanTimeline } from '@/components/business/PlanTimeline';
 import { ConditionsPanel } from '@/components/conditions/ConditionsPanel';
 import { AssumptionsSection } from '@/components/business/AssumptionsSection';
 import { RulesSection } from '@/components/rules/RulesSection';
-import { SyntheticLabel } from '@/components/SyntheticLabel';
+import { CompanyDataLabel } from '@/components/CompanyDataLabel';
 
 const SECTIONS = [
   { id: 'sec-timeline', label: 'Plan timeline' },
@@ -37,7 +37,7 @@ export function BusinessPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-5">
-      <SyntheticLabel />
+      <CompanyDataLabel />
       <Notice>
         Every change you make here becomes a chip in the scenario bar and is simulated as a <span className="font-medium text-ink">draft</span> next to the
         baseline. Remove a chip to undo it. Edits to facts, such as a wage or an assumption, change the baseline too.
@@ -92,7 +92,7 @@ export function BusinessPage() {
       <div id="sec-assumptions" className="scroll-mt-44">
         <Disclosure
           title="Assumptions"
-          subtitle="Every adjustable parameter of the model, with where its value comes from. Collapsed by default."
+          subtitle="Model inputs and where their values come from."
         >
           <AssumptionsSection />
         </Disclosure>

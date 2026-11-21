@@ -3,7 +3,7 @@ import { selectHasDraft, useStore } from "@/services/store";
 import { timelineEvents } from "@/services/derive";
 import { dayLabel, money, num, signed, signedMoney } from "@/services/format";
 import { Card, Segmented, StatTile } from "@/components/ui";
-import { SyntheticLabel } from "@/components/SyntheticLabel";
+import { CompanyDataLabel } from "@/components/CompanyDataLabel";
 import { useProjections } from "@/components/hooks";
 import { DayScrubber } from "@/components/DayScrubber";
 import { CREW_COLORS, ServiceMap } from "@/components/ServiceMap";
@@ -24,7 +24,6 @@ export function OperationsPage() {
   const day = useStore((s) => s.selectedDay);
   const setDay = useStore((s) => s.setSelectedDay);
   const company = useStore((s) => s.company);
-  const industry = useStore((s) => s.industry);
   const [which, setWhich] = useState<"baseline" | "draft">("draft");
   const { base, full, nameOf } = useProjections();
 
@@ -41,8 +40,8 @@ export function OperationsPage() {
     [result, nameOf],
   );
   const jobTypeName = useCallback(
-    (id: string) => industry.jobTypes.find((j) => j.id === id)?.name ?? id,
-    [industry],
+    (id: string) => company.jobTypes.find((j) => j.id === id)?.name ?? id,
+    [company.jobTypes],
   );
 
   const events = useMemo(
@@ -57,8 +56,8 @@ export function OperationsPage() {
     baselineResult.days[Math.min(d, baselineResult.days.length - 1)];
   const planIds = useMemo(
     () =>
-      industry.jobTypes.filter((j) => j.kind === "recurring").map((j) => j.id),
-    [industry],
+      company.jobTypes.filter((j) => j.kind === "recurring").map((j) => j.id),
+    [company.jobTypes],
   );
   const shift = (showDraft ? full.policies : base.policies).shiftHours;
   const crewVehicle = (id: string) =>
@@ -69,7 +68,7 @@ export function OperationsPage() {
   const compare = showDraft;
   return (
     <div className="space-y-4">
-      <SyntheticLabel />
+      <CompanyDataLabel />
       {hasDraft && (
         <div className="flex flex-wrap items-center gap-3">
           <span className="text-[13px] text-muted">Showing</span>

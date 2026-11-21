@@ -20,7 +20,7 @@ UI and optimizer (engine supports them), growth-strategy comparison, seasonal st
 
 ## Digital twin (next programme of work)
 
-Design complete; implementation **in progress** on branch `claude/digital-twin`. Documents: `docs/digital-twin/`.
+Design and implementation **done** through M5. Documents are in `docs/digital-twin/`.
 Plan and task ids: `docs/digital-twin/implementation-plan.md`.
 
 | Milestone | Tasks | Status |
@@ -47,6 +47,7 @@ Plan and task ids: `docs/digital-twin/implementation-plan.md`.
 | Engine | Cross-run draw tables (`drawCache`) — about 20% faster default optimization (≈ 9 s in bundled Node on the E2 container), results unchanged | `tests/simulation/draw-cache.test.ts` |
 | Data | Landscaping industry pack and calibrated synthetic sample company; parameter metadata with provenance | `tests/unit/landscaping-data.test.ts` |
 | UI | App shell, scenario bar (baseline vs draft), Operations (map, routes, scrubber, crew cards, timeline), Financials (P&L, cash, bridge, job-type profitability), Business (decisions + assumptions with provenance) | browser-verified by Playwright script during development; no automated UI tests in the repo |
+| Data | Browser-only company JSON import and export, CSV roster templates, validation review, per-field provenance, and persistence v5 migration | `tests/unit/company-files.test.ts`, `tests/unit/company-persistence.test.ts` |
 | Infra | Import-boundary test, Web Worker bridge for optimization | `tests/architecture`, `tests/optimization/worker-bridge.test.ts` |
 
 ## Active work
@@ -56,6 +57,7 @@ the tasks in flight at hand-over time.
 
 ## Known issues and limitations
 
+- The browser keeps one imported company. A company file captures the starting company and its edited facts. Scenario plans, conditions, seed and horizon are stored in the app.
 - Sample-company parameters are synthetic; elasticities, churn, breakdown and weather rates are illustrative assumptions. Outputs are scenarios, not forecasts.
 - Finite horizon: actions that change the customer base have effects beyond the simulated year. The optimizer guards with `maxCustomerLossFraction` and flags `assumptionSensitive` results; it does not value the customer base explicitly.
 - Optimizer search is heuristic (grid on prices, beam on combinations).

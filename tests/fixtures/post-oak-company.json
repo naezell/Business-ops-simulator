@@ -1,0 +1,175 @@
+{
+  "version": 1,
+  "company": {
+    "industryId": "landscaping",
+    "name": "Post Oak Yard Care",
+    "startMonth": 2,
+    "jobTypes": [
+      {
+        "id": "weekly-yard",
+        "name": "Weekly mow, edge and blow",
+        "kind": "recurring",
+        "standardLaborHours": 1.25,
+        "basePrice": 72,
+        "materialCost": 0,
+        "equipmentFuelGalPerHour": 0.8,
+        "requiredEquipmentTypes": ["mower", "trimmer", "blower"],
+        "minSkill": 2,
+        "minCrewSize": 1,
+        "weatherSensitive": true,
+        "splittable": false,
+        "seasonality": [0.25, 0.25, 0.75, 1, 1, 1, 1, 1, 1, 0.75, 0.5, 0.25],
+        "intervalDays": 7,
+        "lateAfterDays": 2,
+        "cancelAfterDays": 6,
+        "offered": true
+      },
+      {
+        "id": "bed-cleanup",
+        "name": "Landscape bed cleanup",
+        "kind": "one-off",
+        "standardLaborHours": 3.5,
+        "basePrice": 265,
+        "materialCost": 18,
+        "equipmentFuelGalPerHour": 0.3,
+        "requiredEquipmentTypes": ["trimmer", "blower"],
+        "minSkill": 2,
+        "minCrewSize": 2,
+        "weatherSensitive": true,
+        "splittable": true,
+        "seasonality": [0.6, 0.8, 1.6, 1.4, 1, 0.8, 0.6, 0.6, 0.9, 1.2, 1.1, 0.6],
+        "annualRatePerCustomer": 1.3,
+        "lateAfterDays": 7,
+        "cancelAfterDays": 21,
+        "offered": true
+      }
+    ],
+    "employees": [
+      { "id": "lead", "name": "Casey Reed", "hourlyWage": 25.5, "skill": 3, "productivity": 1.1, "crewId": "north", "tenureDays": 700 },
+      { "id": "tech", "name": "Avery Morgan", "hourlyWage": 19.75, "skill": 2, "productivity": 1, "crewId": "north", "tenureDays": 150 }
+    ],
+    "crews": [{ "id": "north", "name": "North route", "vehicleId": "pickup" }],
+    "vehicles": [
+      {
+        "id": "pickup",
+        "name": "Route pickup",
+        "seats": 3,
+        "mpg": 15.5,
+        "maintenanceCostPerMile": 0.18,
+        "asset": {
+          "purchasePrice": 32500,
+          "usefulLifeYears": 9,
+          "salvageValue": 6000,
+          "ageYears": 3,
+          "financing": { "kind": "loan", "balance": 12500, "annualRate": 0.069, "monthsRemaining": 29 }
+        }
+      }
+    ],
+    "equipment": [
+      {
+        "id": "mower-1",
+        "name": "48-inch mower",
+        "equipmentTypeId": "mower",
+        "crewId": "north",
+        "maintenanceCostPerHour": 1.8,
+        "asset": { "purchasePrice": 7100, "usefulLifeYears": 6, "salvageValue": 900, "ageYears": 2, "financing": { "kind": "owned" } }
+      },
+      {
+        "id": "trimmer-1",
+        "name": "String trimmer",
+        "equipmentTypeId": "trimmer",
+        "crewId": "north",
+        "maintenanceCostPerHour": 0.28,
+        "asset": { "purchasePrice": 340, "usefulLifeYears": 3, "salvageValue": 40, "ageYears": 1, "financing": { "kind": "owned" } }
+      },
+      {
+        "id": "blower-1",
+        "name": "Backpack blower",
+        "equipmentTypeId": "blower",
+        "crewId": "north",
+        "maintenanceCostPerHour": 0.36,
+        "asset": { "purchasePrice": 570, "usefulLifeYears": 4, "salvageValue": 60, "ageYears": 0.5, "financing": { "kind": "owned" } }
+      }
+    ],
+    "customers": [
+      { "id": "home-1", "name": "Stonegate residence", "x": 2.1, "y": -0.8, "sizeFactor": 0.85, "recurringJobTypeId": "weekly-yard", "phase": 0.9 },
+      { "id": "home-2", "name": "Parkview residence", "x": 2.8, "y": -1.1, "sizeFactor": 1.05, "recurringJobTypeId": "weekly-yard", "phase": 0.55 },
+      { "id": "office-1", "name": "Oak Court offices", "x": -3.2, "y": 1.4, "sizeFactor": 2.1, "recurringJobTypeId": "weekly-yard", "phase": 0.2 },
+      { "id": "home-3", "name": "Juniper residence", "x": -1.4, "y": 2.8, "sizeFactor": 1.2, "recurringJobTypeId": null, "phase": 0 },
+      { "id": "hoa-1", "name": "North Creek HOA grounds", "x": 3.3, "y": 4.2, "sizeFactor": 9.4, "recurringJobTypeId": "weekly-yard", "phase": 0.35 },
+      { "id": "retail-1", "name": "Cedar Crossing retail center", "x": -4.1, "y": 2.3, "sizeFactor": 7.5, "recurringJobTypeId": "weekly-yard", "phase": 0.78 }
+    ],
+    "pricing": { "globalMultiplier": 1, "byJobType": { "bed-cleanup": 1.05 } },
+    "policies": {
+      "shiftHours": 8,
+      "workDaysPerWeek": 5,
+      "maxOvertimeHoursPerDay": 1,
+      "minPaidHoursPerShift": 4,
+      "rainoutPaidHours": 2,
+      "routing": "nearest",
+      "autoBackfill": true,
+      "acceptNewCustomers": true
+    },
+    "market": {
+      "organicLeadsPerMonth": 4,
+      "marketingMonthlySpend": 200,
+      "marketingMaxLeadsPerMonth": 6,
+      "marketingSpendScale": 700,
+      "leadSeasonality": [0.5, 0.7, 1.4, 1.6, 1.3, 1, 0.8, 0.8, 1, 1.1, 1, 0.8],
+      "baseConversionRate": 0.3,
+      "acquisitionPriceElasticity": 2,
+      "baseMonthlyChurn": 0.012,
+      "retentionPriceElasticity": 2,
+      "oneOffPriceElasticity": 1.25,
+      "priceIncreaseShockChurnPerPct": 0.004,
+      "serviceFailureChurnWeight": 0.5,
+      "serviceFailureHalfLifeDays": 28,
+      "newCustomer": {
+        "serviceRadiusMiles": 5,
+        "sizeFactorMin": 0.8,
+        "sizeFactorMax": 1.8,
+        "recurringJobTypeMix": { "weekly-yard": 1 }
+      }
+    },
+    "workforce": {
+      "payrollBurdenRate": 0.19,
+      "overtimeMultiplier": 1.5,
+      "overtimeWeeklyThresholdHours": 40,
+      "absenceRate": 0.025,
+      "annualTurnoverRate": 0.22,
+      "timeToFillDays": 14,
+      "hiringCostPerHire": 475,
+      "rampDays": 30,
+      "rampStartProductivity": 0.7,
+      "crewSizeCoordinationLoss": 0.04,
+      "payPeriodDays": 14
+    },
+    "reliability": {
+      "vehicle": { "dailyProb": 0.002, "ageFactorPerYear": 0.2, "repairDaysMin": 1, "repairDaysMax": 3, "repairCostMin": 250, "repairCostMax": 1500 },
+      "equipment": { "dailyProb": 0.004, "ageFactorPerYear": 0.3, "repairDaysMin": 1, "repairDaysMax": 2, "repairCostMin": 45, "repairCostMax": 450 }
+    },
+    "weather": {
+      "rainoutProbByMonth": [0.07, 0.08, 0.09, 0.12, 0.12, 0.08, 0.06, 0.06, 0.07, 0.08, 0.08, 0.08],
+      "partialProbByMonth": [0.08, 0.08, 0.1, 0.12, 0.12, 0.09, 0.08, 0.08, 0.09, 0.1, 0.09, 0.08],
+      "partialDayFraction": 0.55
+    },
+    "costs": {
+      "fuelPricePerGallon": 3.25,
+      "avgSpeedMph": 27,
+      "roadFactor": 1.22,
+      "stopOverheadHours": 0.08,
+      "overhead": [
+        { "id": "insurance", "name": "Business insurance", "monthlyAmount": 410 },
+        { "id": "storage", "name": "Truck and mower storage", "monthlyAmount": 285 },
+        { "id": "software", "name": "Scheduling and phone", "monthlyAmount": 95 }
+      ]
+    },
+    "finance": {
+      "startingCash": 17850,
+      "minCashReserve": 6000,
+      "lineOfCredit": { "limit": 8000, "annualRate": 0.115 },
+      "ar": { "collectionDaysMean": 12, "collectionDaysJitter": 0.4, "badDebtRate": 0.006 },
+      "newLoan": { "annualRate": 0.083, "termMonths": 48, "downPaymentFraction": 0.2 }
+    }
+  }
+}

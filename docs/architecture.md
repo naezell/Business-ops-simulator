@@ -114,8 +114,9 @@ One 365-day run of the sample company: < 30 ms in summary mode. A default
 optimization (≈ 40 candidates × 5 seeds + beam search): < 10 s, in a worker,
 with progress. If budgets are exceeded, profile `dispatch.ts` first.
 
+A company file adapter in services produces a validated `CompanyConfig` in the browser. Its CSV adapters replace the customer and employee lists, and persistence stores one imported company with assumption provenance. See [ADR-019](decisions/019-local-company-files.md).
+
 ## Evolution path (not built)
 
-- Real business data: import adapters produce a `CompanyConfig`; provenance flips to `user-provided`.
 - Accounts/sync: Cloudflare Worker + D1 behind `persistence.ts`.
 - LLM narration: reads `OptimizationResult`, writes prose, cannot alter numbers.
