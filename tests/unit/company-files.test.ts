@@ -235,6 +235,17 @@ describe('company CSV lists', () => {
     ]));
   });
 
+  it('rejects IDs reserved for decisions that target all services or employees', () => {
+    const jobTypes = postOakFile.company.jobTypes.map((job) => ({ ...job, id: job.kind === 'one-off' ? 'all' : job.id }));
+    const employees = [employeesHeader, 'all,Field worker,20,2,1,north,100'].join('\n');
+    const result = importCompany(companyFile({ ...postOakFile.company, jobTypes }), { employees });
+    expect(result.ok).toBe(false);
+    expect(result.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: 'company.jobTypes[1].id', severity: 'error', message: expect.stringContaining('all services') }),
+      expect.objectContaining({ path: 'employees.csv row 2, id', severity: 'error', message: expect.stringContaining('all employees') }),
+    ]));
+  });
+
   it('locates a duplicate customer ID on the later CSV row', () => {
     const customers = [
       customersHeader,

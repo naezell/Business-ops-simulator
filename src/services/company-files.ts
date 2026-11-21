@@ -19,12 +19,16 @@ export type CompanyImportResult =
 function listIssues(company: CompanyConfig): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   for (const [index, job] of company.jobTypes.entries()) {
+    if (job.id === 'all') issues.push(importError(`company.jobTypes[${index}].id`, 'Choose an ID other than "all", which applies pricing decisions to all services.'));
     if (job.kind !== 'recurring' || !job.intervalDays || job.intervalDays <= 0) continue;
     for (const [month, multiplier] of job.seasonality.entries()) {
       if (multiplier / job.intervalDays > 100) {
         issues.push(importError(`company.jobTypes[${index}].seasonality[${month}]`, 'The seasonality and visit interval must schedule at most 100 visits per customer per day.'));
       }
     }
+  }
+  for (const [index, employee] of company.employees.entries()) {
+    if (employee.id === 'all') issues.push(importError(`company.employees[${index}].id`, 'Choose an ID other than "all", which applies wage rules to all employees.'));
   }
   const vehicleIds = new Set(company.vehicles.map(({ id }) => id));
   for (const [index, item] of company.equipment.entries()) {
