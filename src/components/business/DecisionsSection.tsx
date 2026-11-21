@@ -1,5 +1,5 @@
 import type { Policies } from '@/simulation';
-import { useStore } from '@/services/store';
+import { selectCompanyProvenance, useStore } from '@/services/store';
 import { ROUTING_LABEL, chipKey, effectivePrice } from '@/services/derive';
 import { formatParam, money } from '@/services/format';
 import { Card, Icon, ProvenanceBadge, Segmented, SliderField, Switch, cx } from '../ui';
@@ -82,13 +82,14 @@ export function PricingSection() {
   const G0 = base.pricing.globalMultiplier;
   const pct = allAction && allAction.type === 'set-price' ? Math.round((allAction.multiplier / G0 - 1) * 100) : 0;
   const meta = industry.paramMeta['pricing.globalMultiplier'];
+  const provenance = useStore((s) => selectCompanyProvenance(s, 'pricing.globalMultiplier', meta?.provenance ?? 'synthetic-demo'));
 
   return (
     <div className="space-y-4">
       <Card
         title="All prices"
         subtitle="Scales every job type at once, on top of any per-job adjustment below."
-        actions={meta && <ProvenanceBadge provenance={meta.provenance} />}
+        actions={meta && <ProvenanceBadge provenance={provenance} />}
       >
         <SliderField
           label="Price change, all services"
@@ -129,6 +130,7 @@ function PolicySlider({ field, hint }: { field: Exclude<keyof Policies, 'routing
   const setDraftAction = useStore((s) => s.setDraftAction);
   const removeDraftByKey = useStore((s) => s.removeDraftByKey);
   const meta = industry.paramMeta[`policies.${field}`];
+  const provenance = useStore((s) => selectCompanyProvenance(s, `policies.${field}`, meta?.provenance ?? 'synthetic-demo'));
   const value = full.policies[field];
   if (!meta) return null;
   const changed = value !== base.policies[field];
@@ -137,7 +139,7 @@ function PolicySlider({ field, hint }: { field: Exclude<keyof Policies, 'routing
       label={
         <span className="inline-flex flex-wrap items-center gap-2">
           {meta.label}
-          <ProvenanceBadge provenance={meta.provenance} />
+          <ProvenanceBadge provenance={provenance} />
         </span>
       }
       valueText={
@@ -231,11 +233,12 @@ export function MarketingSection() {
   const setDraftAction = useStore((s) => s.setDraftAction);
   const removeDraftByKey = useStore((s) => s.removeDraftByKey);
   const meta = industry.paramMeta['market.marketingMonthlySpend'];
+  const provenance = useStore((s) => selectCompanyProvenance(s, 'market.marketingMonthlySpend', meta?.provenance ?? 'synthetic-demo'));
   if (!meta) return null;
   const v = full.marketingSpend;
   const changed = v !== base.marketingSpend;
   return (
-    <Card title="Marketing" subtitle="Monthly paid-marketing budget." actions={<ProvenanceBadge provenance={meta.provenance} />}>
+    <Card title="Marketing" subtitle="Monthly paid-marketing budget." actions={<ProvenanceBadge provenance={provenance} />}>
       <SliderField
         label="Marketing spend per month"
         valueText={
@@ -255,7 +258,7 @@ export function MarketingSection() {
         }}
       />
       <p className="mt-3 flex items-center gap-1.5 text-[12.5px] text-muted">
-        <Icon.Info className="h-3.5 w-3.5 shrink-0" /> Lead volume, conversion and churn are assumptions; see Assumptions below.
+        <Icon.Info className="h-3.5 w-3.5 shrink-0" /> See Assumptions below for lead volume, conversion and churn inputs.
       </p>
     </Card>
   );

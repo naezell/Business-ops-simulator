@@ -20,3 +20,5 @@ simulated long-term customer value (013), disposal and owner distributions (014)
 worker pool (016), capacity and loss by experiment (017).
 
 ADR-018 (customer-base scaling rank hash) is [`018-scaling-rank-hash.md`](018-scaling-rank-hash.md).
+
+ADR-019 (local company files) is [019-local-company-files.md](019-local-company-files.md).

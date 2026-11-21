@@ -12,6 +12,7 @@ import type {
   AssetFinance,
   CompanyConfig,
   CrewDayLog,
+  Employee,
   Financing,
   Id,
   IncomeStatement,
@@ -22,21 +23,34 @@ import type {
   SimEvent,
   SimulationResult,
 } from '@/simulation';
-import type { IndustryDefinition } from '@/business/types';
 import { money, monthName, num, percent, signedRelative } from './format';
 
 // ───────────────────────── Company patch (facts / assumptions) ─────────────────────────
 
-/** Edits to the company itself, keyed by dot path; array segments are matched by element id. */
+/** Edits to the company itself, keyed by dot path. Roster paths use IDs; numeric lists use indexes. */
 export type CompanyPatch = Record<string, number>;
 
+const EMPLOYEE_WAGE = /^employees\.(.+)\.hourlyWage$/;
+const arrayIndex = /^(0|[1-9]\d*)$/;
+
+function wageEmployee(obj: unknown, id: string): Employee | undefined {
+  const employees = (obj as Partial<CompanyConfig> | undefined)?.employees;
+  return Array.isArray(employees) ? employees.find((employee) => employee.id === id) : undefined;
+}
+
 function step(node: unknown, seg: string): unknown {
-  if (Array.isArray(node)) return node.find((x) => x && typeof x === 'object' && (x as { id?: string }).id === seg);
+  if (Array.isArray(node)) {
+    const indexed = arrayIndex.test(seg) ? node[Number(seg)] : undefined;
+    if (typeof indexed === 'number') return indexed;
+    return node.find((x) => x && typeof x === 'object' && (x as { id?: string }).id === seg);
+  }
   if (node && typeof node === 'object') return (node as Record<string, unknown>)[seg];
   return undefined;
 }
 
 export function getPath(obj: unknown, path: string): unknown {
+  const employee = EMPLOYEE_WAGE.exec(path);
+  if (employee) return wageEmployee(obj, employee[1])?.hourlyWage;
   let cur = obj;
   for (const seg of path.split('.')) {
     cur = step(cur, seg);
@@ -46,6 +60,13 @@ export function getPath(obj: unknown, path: string): unknown {
 }
 
 function setPath(obj: unknown, path: string, value: number): boolean {
+  const wage = EMPLOYEE_WAGE.exec(path);
+  if (wage) {
+    const employee = wageEmployee(obj, wage[1]);
+    if (!employee) return false;
+    employee.hourlyWage = value;
+    return true;
+  }
   const segs = path.split('.');
   let cur: unknown = obj;
   for (let i = 0; i < segs.length - 1; i++) {
@@ -53,7 +74,12 @@ function setPath(obj: unknown, path: string, value: number): boolean {
     if (cur === undefined || cur === null || typeof cur !== 'object') return false;
   }
   const last = segs[segs.length - 1];
-  if (!cur || typeof cur !== 'object' || Array.isArray(cur)) return false;
+  if (Array.isArray(cur)) {
+    if (!arrayIndex.test(last) || typeof cur[Number(last)] !== 'number') return false;
+    cur[Number(last)] = value;
+    return true;
+  }
+  if (!cur || typeof cur !== 'object') return false;
   const rec = cur as Record<string, unknown>;
   if (typeof rec[last] !== 'number') return false;
   rec[last] = value;
@@ -672,13 +698,13 @@ export function relativeText(a: number, b: number): string {
 }
 
 /** Name lookup for ids that appear in logs and events. */
-export function nameLookup(p: Projection, industry: IndustryDefinition, result?: SimulationResult): (id: Id) => string {
+export function nameLookup(p: Projection, jobTypes: JobTypeDef[], result?: SimulationResult): (id: Id) => string {
   const map = new Map<Id, string>();
   for (const e of p.employees) map.set(e.id, e.name);
   for (const v of p.vehicles) map.set(v.id, v.name);
   for (const e of p.equipment) map.set(e.id, e.name);
   for (const c of p.crews) map.set(c.id, c.name);
-  for (const j of industry.jobTypes) map.set(j.id, j.name);
+  for (const j of jobTypes) map.set(j.id, j.name);
   if (result) for (const s of Object.values(result.crewStats)) if (!map.has(s.crewId)) map.set(s.crewId, s.name);
   return (id) => map.get(id) ?? (id.startsWith('h-') ? 'New hire' : id);
 }

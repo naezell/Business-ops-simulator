@@ -6,16 +6,17 @@
  */
 import { create } from 'zustand';
 import { MONTH_LENGTHS, runSimulation, validateScenario } from '@/simulation';
-import type { Action, CompanyConfig, PlannedAction, Scenario, Shock, SimulationResult, ValidationIssue } from '@/simulation';
+import type { Action, CompanyConfig, PlannedAction, Scenario, Shock, SimulationResult, Provenance, ValidationIssue } from '@/simulation';
 import { defaultIndustryId, getIndustry } from '@/business/registry';
 import type { IndustryDefinition } from '@/business/types';
 import { applyPatch, chipKey, type CompanyPatch } from './derive';
 import type { Objective, StrategyEvaluation, StudyProgress, StudyResult } from '@/optimization';
 import { catalogFromIndustry, runStudyInPool, type StudyHandle } from './simClient';
 import { adoptPayload, mergeRules } from './studyAdopt';
-import { STORAGE_VERSION, clearPersisted, loadPersisted, savePersisted, type DraftPlan, type PersistedState, type ViewId } from './persistence';
+import { STORAGE_VERSION, clearPersisted, loadPersisted, savePersisted, type CompanySource, type DraftPlan, type PersistedState, type ViewId } from './persistence';
 import { clampDay } from './planTimeline';
 import type { DecisionRule } from '@/simulation/types-twin';
+import type { UserCompany } from './company-files';
 
 export type { DraftPlan, ViewId } from './persistence';
 
@@ -39,8 +40,15 @@ interface Core {
   patch: CompanyPatch;
   /** Hypothetical conditions: describe the world, so they apply to baseline and draft alike. */
   shocks: Shock[];
-  /** Id of the industry's demo scenario the company, start month, horizon and seed come from; null = sample company. */
+  /** Id of the industry's demo scenario the company, start month, horizon and seed come from. */
   demoScenarioId: string | null;
+  companySource: CompanySource;
+  userCompany: UserCompany | null;
+}
+
+function coreOf(state: Core): Core {
+  const { industryId, seed, horizonMonths, baselineActions, draft, patch, shocks, demoScenarioId, companySource, userCompany } = state;
+  return { industryId, seed, horizonMonths, baselineActions, draft, patch, shocks, demoScenarioId, companySource, userCompany };
 }
 
 interface Outcome {
@@ -79,8 +87,9 @@ export function demoScenarioOf(industry: IndustryDefinition, id: string | null):
   return sc;
 }
 
-/** Company before user edits: the demo scenario's company, or the industry's sample company. */
-function baseCompany(industry: IndustryDefinition, core: Pick<Core, 'demoScenarioId'>): CompanyConfig {
+/** Company before user edits, from the active source. */
+function baseCompany(industry: IndustryDefinition, core: Core): CompanyConfig {
+  if (core.companySource === 'user' && core.userCompany) return core.userCompany.company;
   return demoScenarioOf(industry, core.demoScenarioId)?.company ?? sampleCompany(industry);
 }
 
@@ -133,9 +142,23 @@ export interface StudyState {
   error: string | null;
 }
 
+const companyKeys = new WeakMap<CompanyConfig, number>();
+let nextCompanyKey = 0;
+
+/** Imported configs are immutable in the store. Avoid serializing their rosters during UI updates. */
+function activeCompanyKey(s: Core): number | null {
+  const company = s.companySource === 'user' ? s.userCompany?.company : undefined;
+  if (!company) return null;
+  const existing = companyKeys.get(company);
+  if (existing !== undefined) return existing;
+  const key = ++nextCompanyKey;
+  companyKeys.set(company, key);
+  return key;
+}
+
 /** Fingerprint of everything that changes what the optimizer would see. */
 export function scenarioKey(s: Core): string {
-  return JSON.stringify([s.industryId, s.demoScenarioId, s.seed, s.horizonMonths, s.patch, s.shocks, s.baselineActions, s.draft]);
+  return JSON.stringify([s.industryId, s.demoScenarioId, activeCompanyKey(s), s.seed, s.horizonMonths, s.patch, s.shocks, s.baselineActions, s.draft]);
 }
 
 export interface AppState extends Core {
@@ -193,6 +216,8 @@ export interface AppState extends Core {
    * selected day (they refer to the previous company). Callers confirm first when something would be lost.
    */
   setDemoScenario: (id: string | null) => void;
+  setUserCompany: (company: CompanyConfig, assumedPaths: string[]) => void;
+  activateUserCompany: () => void;
 }
 
 interface Built {
@@ -206,7 +231,7 @@ interface Built {
 }
 
 function freshCore(industryId: string): Core {
-  return { industryId, seed: DEFAULT_SEED, horizonMonths: 12, baselineActions: [], draft: { actions: [], rules: [] }, patch: {}, shocks: [], demoScenarioId: null };
+  return { industryId, seed: DEFAULT_SEED, horizonMonths: 12, baselineActions: [], draft: { actions: [], rules: [] }, patch: {}, shocks: [], demoScenarioId: null, companySource: 'sample', userCompany: null };
 }
 
 /** Builds and simulates from a core; throws if the baseline cannot be simulated. */
@@ -233,6 +258,7 @@ function initial(): Built & { selectedDay: number; view: ViewId } {
   const stored = loadPersisted();
   if (stored) {
     try {
+      const demoScenarioId = demoScenarioOf(getIndustry(stored.industryId), stored.demoScenarioId) ? stored.demoScenarioId : null;
       const core: Core = {
         industryId: stored.industryId,
         seed: stored.seed,
@@ -242,17 +268,31 @@ function initial(): Built & { selectedDay: number; view: ViewId } {
         patch: stored.patch,
         shocks: stored.shocks,
         // An id the industry no longer offers falls back to the sample company.
-        demoScenarioId: demoScenarioOf(getIndustry(stored.industryId), stored.demoScenarioId) ? stored.demoScenarioId : null,
+        demoScenarioId,
+        companySource: stored.companySource === 'demo' && !demoScenarioId ? 'sample' : stored.companySource,
+        userCompany: stored.userCompany,
       };
       const built = buildAll(core);
       // A draft that no longer simulates counts as unusable stored data.
       if (built.draftIssues.some((i) => i.severity === 'error')) throw new Error('stored draft invalid');
       return { ...built, selectedDay: stored.selectedDay, view: stored.view };
     } catch {
-      clearPersisted();
+      if (stored.userCompany) {
+        try {
+          const safeCore: Core = {
+            ...freshCore(stored.userCompany.company.industryId), companySource: 'user', userCompany: stored.userCompany,
+          };
+          const built = buildAll(safeCore);
+          savePersisted(persistenceSnapshot(safeCore, 0, stored.view));
+          return { ...built, selectedDay: 0, view: stored.view };
+        } catch {
+          // Keep the saved import available for recovery even if this version cannot simulate it.
+        }
+      } else clearPersisted();
     }
   }
-  return { ...buildAll(freshCore(defaultIndustryId)), selectedDay: 0, view: 'operations' };
+  const core = { ...freshCore(defaultIndustryId), userCompany: stored?.userCompany ?? null };
+  return { ...buildAll(core), selectedDay: 0, view: 'operations' };
 }
 
 let timer: ReturnType<typeof setTimeout> | null = null;
@@ -260,7 +300,7 @@ let persistTimer: ReturnType<typeof setTimeout> | null = null;
 let lastBaselineKey = '';
 let studyHandle: StudyHandle | null = null;
 
-const baselineKeyOf = (c: Core) => JSON.stringify([c.industryId, c.demoScenarioId, c.seed, c.horizonMonths, c.patch, c.shocks, c.baselineActions]);
+const baselineKeyOf = (c: Core) => JSON.stringify([c.industryId, c.demoScenarioId, activeCompanyKey(c), c.seed, c.horizonMonths, c.patch, c.shocks, c.baselineActions]);
 
 export const useStore = create<AppState>()((set, get) => {
   const init = initial();
@@ -269,17 +309,7 @@ export const useStore = create<AppState>()((set, get) => {
   /** Applies a core change immediately to the inputs and schedules the debounced re-simulation. */
   function commit(next: Partial<Core>, extra: Partial<AppState> = {}): void {
     const s = get();
-    const core: Core = {
-      industryId: s.industryId,
-      seed: s.seed,
-      horizonMonths: s.horizonMonths,
-      baselineActions: s.baselineActions,
-      draft: s.draft,
-      patch: s.patch,
-      shocks: s.shocks,
-      demoScenarioId: s.demoScenarioId,
-      ...next,
-    };
+    const core: Core = { ...coreOf(s), ...next };
     const industry = getIndustry(core.industryId);
     const company = applyPatch(baseCompany(industry, core), core.patch);
     const horizonDays = horizonDaysOf(industry, core, company);
@@ -306,16 +336,7 @@ export const useStore = create<AppState>()((set, get) => {
   function runNow(): void {
     timer = null;
     const s = get();
-    const core: Core = {
-      industryId: s.industryId,
-      seed: s.seed,
-      horizonMonths: s.horizonMonths,
-      baselineActions: s.baselineActions,
-      draft: s.draft,
-      patch: s.patch,
-      shocks: s.shocks,
-      demoScenarioId: s.demoScenarioId,
-    };
+    const core = coreOf(s);
     const industry = getIndustry(core.industryId);
     const { baseline, draft } = buildScenarios(industry, core);
     const key = baselineKeyOf(core);
@@ -346,6 +367,33 @@ export const useStore = create<AppState>()((set, get) => {
       draftResult = baselineResult;
     }
     set({ baselineResult, draftResult, baselineIssues, draftIssues, pending: false });
+  }
+
+  function activateCompany(core: Core, requireStorage = false): void {
+    const current = get();
+    const built = buildAll(core);
+    if (requireStorage && !savePersisted(persistenceSnapshot(core, 0, current.view))) {
+      throw new Error('This browser could not save the company. Check that local storage is available and has room.');
+    }
+    if (timer) clearTimeout(timer);
+    timer = null;
+    current.cancelStudy();
+    lastBaselineKey = baselineKeyOf(core);
+    set({
+      ...core,
+      industry: built.industry,
+      company: built.company,
+      horizonDays: built.baselineResult.horizonDays,
+      draftActions: core.draft.actions,
+      editedPaths: new Set(),
+      baselineResult: built.baselineResult,
+      draftResult: built.draftResult,
+      baselineIssues: built.baselineIssues,
+      draftIssues: built.draftIssues,
+      pending: false,
+      selectedDay: 0,
+      study: { status: 'idle', objective: current.study.objective, progress: null, result: null, partial: false, resultKey: null, appliedIds: [], error: null },
+    });
   }
 
   return {
@@ -410,16 +458,7 @@ export const useStore = create<AppState>()((set, get) => {
     startStudy: (objective) => {
       const s = get();
       if (s.study.status === 'running') return;
-      const core: Core = {
-        industryId: s.industryId,
-        seed: s.seed,
-        horizonMonths: s.horizonMonths,
-        baselineActions: s.baselineActions,
-        draft: s.draft,
-        patch: s.patch,
-        shocks: s.shocks,
-        demoScenarioId: s.demoScenarioId,
-      };
+      const core = coreOf(s);
       const key = scenarioKey(core);
       // Same scenario the optimizer used: baseline plus pending decisions (and rules), with the store's shocks.
       const { draft } = buildScenarios(s.industry, core);
@@ -500,38 +539,41 @@ export const useStore = create<AppState>()((set, get) => {
       commit({ patch });
     },
     resetEverything: () => {
-      const c = freshCore(get().industryId);
-      commit(c, { selectedDay: 0 });
+      const s = get();
+      activateCompany({ ...freshCore(s.industryId), userCompany: s.userCompany });
     },
     setDemoScenario: (id) => {
       const s = get();
       const demo = demoScenarioOf(s.industry, id);
       const target = demo ? id : null;
-      if (target === s.demoScenarioId) return;
-      commit({ ...freshCore(s.industryId), demoScenarioId: target, seed: demo?.seed ?? DEFAULT_SEED, horizonMonths: s.horizonMonths }, { selectedDay: 0 });
+      if (target === s.demoScenarioId && s.companySource !== 'user') return;
+      activateCompany({
+        ...freshCore(s.industryId), companySource: demo ? 'demo' : 'sample', userCompany: s.userCompany,
+        demoScenarioId: target, seed: demo?.seed ?? DEFAULT_SEED, horizonMonths: s.horizonMonths,
+      });
+    },
+    setUserCompany: (company, assumedPaths) => {
+      const userCompany = { company: structuredClone(company), assumedPaths: [...assumedPaths] };
+      activateCompany({ ...freshCore(company.industryId), companySource: 'user', userCompany, horizonMonths: get().horizonMonths }, true);
+    },
+    activateUserCompany: () => {
+      const s = get();
+      if (!s.userCompany || s.companySource === 'user') return;
+      activateCompany({
+        ...freshCore(s.userCompany.company.industryId), companySource: 'user', userCompany: s.userCompany, horizonMonths: s.horizonMonths,
+      });
     },
   };
 });
 
-// Persist decisions and edits (debounced).
+function persistenceSnapshot(core: Core, selectedDay: number, view: ViewId): PersistedState {
+  return { version: STORAGE_VERSION, ...coreOf(core), selectedDay, view };
+}
+
+// Persist decisions and edits (debounced). An import also writes synchronously before activation.
 useStore.subscribe((s) => {
   if (persistTimer) clearTimeout(persistTimer);
-  persistTimer = setTimeout(() => {
-    const state: PersistedState = {
-      version: STORAGE_VERSION,
-      industryId: s.industryId,
-      seed: s.seed,
-      horizonMonths: s.horizonMonths,
-      baselineActions: s.baselineActions,
-      draft: s.draft,
-      patch: s.patch,
-      shocks: s.shocks,
-      demoScenarioId: s.demoScenarioId,
-      selectedDay: s.selectedDay,
-      view: s.view,
-    };
-    savePersisted(state);
-  }, 250);
+  persistTimer = setTimeout(() => savePersisted(persistenceSnapshot(s, s.selectedDay, s.view)), 250);
 });
 
 /** True when the draft differs from the baseline. */
@@ -539,18 +581,29 @@ export function selectHasDraft(s: AppState): boolean {
   return s.draft.actions.length > 0 || s.draft.rules.length > 0;
 }
 
-/** True when switching the demo scenario would discard something the user did. */
+/** True when switching company sources would discard changes to the current scenario. */
 export function selectHasUserWork(s: AppState): boolean {
   return selectHasDraft(s) || s.baselineActions.length > 0 || s.shocks.length > 0 || Object.keys(s.patch).length > 0;
 }
 
-/**
- * True while the company is built-in demonstration data (the sample company or a demo scenario), never
- * user-provided data. Every company today comes from an industry pack; when users can import their own,
- * this is where that distinction goes.
- */
-export function selectIsSynthetic(_s: Pick<AppState, 'company'>): boolean {
-  return true;
+/** Built-in company sources are demonstration data. */
+export function selectIsSynthetic(s: Pick<AppState, 'companySource'>): boolean {
+  return s.companySource !== 'user';
+}
+
+export function selectUneditedCompany(s: AppState): CompanyConfig {
+  return baseCompany(s.industry, s);
+}
+
+export function selectCompanyProvenance(s: AppState, path: string, fallback: Provenance): Provenance {
+  if (s.editedPaths.has(path)) return 'user-provided';
+  if (s.companySource !== 'user') return fallback;
+  return s.userCompany?.assumedPaths.includes(path) ? 'industry-assumption' : 'user-provided';
+}
+
+export function selectExportAssumedPaths(s: AppState): string[] {
+  if (s.companySource !== 'user') return [];
+  return s.userCompany?.assumedPaths.filter((path) => !s.editedPaths.has(path)) ?? [];
 }
 
 /**
@@ -558,16 +611,7 @@ export function selectIsSynthetic(_s: Pick<AppState, 'company'>): boolean {
  * rule issues, with paths relative to `rules` (a demo scenario's own rules are not part of the list).
  */
 export function validateRuleList(s: AppState, rules: DecisionRule[]): ValidationIssue[] {
-  const core: Core = {
-    industryId: s.industryId,
-    seed: s.seed,
-    horizonMonths: s.horizonMonths,
-    baselineActions: s.baselineActions,
-    draft: { ...s.draft, rules },
-    patch: s.patch,
-    shocks: s.shocks,
-    demoScenarioId: s.demoScenarioId,
-  };
+  const core: Core = { ...coreOf(s), draft: { ...s.draft, rules } };
   const offset = demoScenarioOf(s.industry, s.demoScenarioId)?.rules?.length ?? 0;
   const out: ValidationIssue[] = [];
   for (const i of validateScenario(buildScenarios(s.industry, core).draft)) {

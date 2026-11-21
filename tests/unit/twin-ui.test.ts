@@ -17,7 +17,7 @@ import { OperationsPage } from '../../src/pages/OperationsPage';
 import { FinancialsPage } from '../../src/pages/FinancialsPage';
 import { BusinessPage } from '../../src/pages/BusinessPage';
 import { OptimizePage } from '../../src/pages/OptimizePage';
-import { SyntheticLabel } from '../../src/components/SyntheticLabel';
+import { CompanyDataLabel } from '../../src/components/CompanyDataLabel';
 
 const flush = () => vi.runAllTimers();
 const state = () => useStore.getState();
@@ -34,11 +34,11 @@ const base = {
   view: 'business',
 };
 
-describe('persistence v4', () => {
-  it('migrates v3 to v4 with no demo scenario', () => {
+describe('demo persistence', () => {
+  it('migrates v3 to v5 with no demo scenario', () => {
     const m = migratePersisted({ ...base, version: 3 })!;
-    expect(STORAGE_VERSION).toBe(4);
-    expect(m.version).toBe(4);
+    expect(STORAGE_VERSION).toBe(5);
+    expect(m.version).toBe(5);
     expect(m.demoScenarioId).toBeNull();
     expect(m.seed).toBe(7);
   });
@@ -203,7 +203,7 @@ describe('rule editor model', () => {
 describe('synthetic demonstration data label', () => {
   const LABEL = 'Synthetic demonstration data';
   it('renders in the shared component', () => {
-    expect(renderToStaticMarkup(createElement(SyntheticLabel))).toContain(LABEL);
+    expect(renderToStaticMarkup(createElement(CompanyDataLabel))).toContain(LABEL);
   });
   const pages = { Operations: OperationsPage, Financials: FinancialsPage, Business: BusinessPage, Optimize: OptimizePage };
   for (const [name, Page] of Object.entries(pages)) {

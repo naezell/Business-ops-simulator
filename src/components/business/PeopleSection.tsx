@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { AcquisitionMethod, EquipmentSpec, Id, NewHireSpec, VehicleSpec } from '@/simulation';
-import { useStore } from '@/services/store';
+import { selectCompanyProvenance, useStore } from '@/services/store';
 import { METHOD_LABEL, describeFinancing, skillLabel, type PCrew, type PEmployee, type Origin } from '@/services/derive';
 import { money, num, plural } from '@/services/format';
 import { chipDateLabel } from '@/services/planTimeline';
@@ -44,6 +44,7 @@ function EmployeeRow({ e, crewRemoved }: { e: PEmployee; crewRemoved: boolean })
   const setDraftAction = useStore((s) => s.setDraftAction);
   const path = `employees.${e.id}.hourlyWage`;
   const edited = editedPaths.has(path);
+  const wageProvenance = useStore((s) => selectCompanyProvenance(s, path, 'synthetic-demo'));
   const isBase = e.origin === 'base';
   const removedInDraft = e.removed && e.removedOrigin === 'draft';
   if (e.removed && !removedInDraft) return null;
@@ -61,7 +62,7 @@ function EmployeeRow({ e, crewRemoved }: { e: PEmployee; crewRemoved: boolean })
       <td className="px-3 py-1.5">
         {isBase && !e.removed ? (
           <div className="flex items-center justify-end gap-1.5">
-            {edited && <ProvenanceBadge provenance="user-provided" edited />}
+            <ProvenanceBadge provenance={wageProvenance} />
             <NumberField
               ariaLabel={`Hourly wage for ${e.name}`}
               value={e.hourlyWage}
@@ -167,11 +168,7 @@ function CrewPanel({ crew }: { crew: PCrew }) {
             <tr className="border-b border-line bg-sunken text-[12px] text-muted">
               <th scope="col" className="px-3 py-1.5 text-left font-medium">Person</th>
               <th scope="col" className="px-3 py-1.5 text-left font-medium">Role</th>
-              <th scope="col" className="px-3 py-1.5 text-right font-medium">
-                <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
-                  Hourly wage <ProvenanceBadge provenance="synthetic-demo" />
-                </span>
-              </th>
+              <th scope="col" className="px-3 py-1.5 text-right font-medium">Hourly wage</th>
               <th scope="col" className="px-3 py-1.5 text-right font-medium" title="Work rate at full ramp-up; 1.00 is standard.">Productivity</th>
               <th scope="col" className="px-3 py-1.5 text-right font-medium">Tenure</th>
               <th scope="col" className="px-3 py-1.5" />

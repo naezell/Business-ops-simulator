@@ -69,6 +69,15 @@ step and a provenance class.
   `detail: 'full'`.
 - `warnings`: non-fatal configuration problems.
 
+## Company file format
+
+The version 1 JSON envelope is `{ "version": 1, "company": { ... } }`. Export
+the sample to get a complete starting file, or see the
+[Post Oak Yard Care fixture](../tests/fixtures/post-oak-company.json). The
+in-app Company file guide defines the JSON fields and provides CSV templates.
+For the import defaults, provenance and export scope, see
+[ADR-019](decisions/019-local-company-files.md).
+
 ## Relationships
 
 ```mermaid

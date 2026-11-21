@@ -17,7 +17,7 @@ function flush() {
   vi.runAllTimers();
 }
 
-describe('persistence v3', () => {
+describe('shock persistence', () => {
   const v2 = {
     version: 2,
     industryId: 'landscaping',
@@ -31,18 +31,18 @@ describe('persistence v3', () => {
   };
   it('migrates v2 to the current version with no shocks and loses nothing', () => {
     const m = migratePersisted(structuredClone(v2))!;
-    expect(STORAGE_VERSION).toBe(4);
-    expect(m.version).toBe(4);
+    expect(STORAGE_VERSION).toBe(5);
+    expect(m.version).toBe(5);
     expect(m.shocks).toEqual([]);
     expect(m.draft).toEqual(v2.draft);
     expect(m.patch).toEqual(v2.patch);
     expect(m.view).toBe('business');
   });
-  it('migrates v1 through to v3', () => {
+  it('migrates v1 through to v5', () => {
     const v1 = { ...v2, version: 1, draftActions: v2.draft.actions } as Record<string, unknown>;
     delete v1.draft;
     const m = migratePersisted(v1)!;
-    expect(m.version).toBe(4);
+    expect(m.version).toBe(5);
     expect(m.shocks).toEqual([]);
     expect(m.draft.actions).toEqual(v2.draft.actions);
   });

@@ -293,7 +293,7 @@ export function ProvenanceBadge({ provenance, edited }: { provenance: Provenance
           : p === 'synthetic-demo'
             ? 'Fabricated value for the demonstration company.'
             : p === 'user-provided'
-              ? 'Edited by you.'
+              ? 'Supplied or edited by you.'
               : 'Output of the simulation engine.'
       }
     >

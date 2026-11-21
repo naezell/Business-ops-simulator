@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { HORIZON_OPTIONS, selectHasUserWork, useStore, type ViewId } from '@/services/store';
-import { Button, Icon, Segmented, cx } from './ui';
+import { Button, Icon, Notice, Segmented, cx } from './ui';
+import { CompanyFileControls } from './CompanyFiles';
 
 export const VIEWS: { id: ViewId; label: string; icon: ReactNode }[] = [
   { id: 'operations', label: 'Operations', icon: <Icon.Map /> },
@@ -10,31 +11,46 @@ export const VIEWS: { id: ViewId; label: string; icon: ReactNode }[] = [
 ];
 
 const SAMPLE = '';
+const USER = 'user-company';
 
-/** Chooses between the industry's sample company and its demo scenarios; confirms before discarding work. */
+/** Confirms before switching away from a company with edits or a plan. */
 function ScenarioSwitcher() {
   const industry = useStore((s) => s.industry);
   const demoId = useStore((s) => s.demoScenarioId);
+  const source = useStore((s) => s.companySource);
+  const userName = useStore((s) => s.userCompany?.company.name);
   const hasWork = useStore(selectHasUserWork);
   const setDemo = useStore((s) => s.setDemoScenario);
+  const activateUserCompany = useStore((s) => s.activateUserCompany);
   const [asked, setAsked] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const demos = industry.demoScenarios ?? [];
-  if (demos.length === 0) return null;
   const current = demos.find((d) => d.id === demoId);
-  const choose = (value: string) => {
-    const next = value === SAMPLE ? null : value;
-    if (next === demoId) return;
-    if (hasWork) setAsked(value);
-    else setDemo(next);
+
+  const active = source === 'user' ? USER : demoId ?? SAMPLE;
+  const switchTo = (value: string) => {
+    setError(null);
+    setAsked(null);
+    try {
+      if (value === USER) activateUserCompany();
+      else setDemo(value === SAMPLE ? null : value);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Could not switch companies.');
+    }
   };
-  const askedName = asked === null ? '' : asked === SAMPLE ? `the ${industry.name.toLowerCase()} sample company` : (demos.find((d) => d.id === asked)?.name ?? asked);
+  const choose = (value: string) => {
+    if (value === active) return;
+    if (hasWork) setAsked(value);
+    else switchTo(value);
+  };
+  const askedName = asked === USER ? userName : asked === SAMPLE ? `the ${industry.name.toLowerCase()} sample company` : demos.find((d) => d.id === asked)?.name;
   return (
     <>
       <label className="flex min-w-0 items-center gap-2 text-[12.5px] text-muted">
         <span className="whitespace-nowrap">Company</span>
         <select
           aria-label="Company or demo scenario"
-          value={demoId ?? SAMPLE}
+          value={active}
           onChange={(e) => choose(e.target.value)}
           className="h-8 min-w-0 max-w-[15rem] rounded-md border border-line-strong bg-surface px-2 text-[13px] text-ink"
           title={current?.description}
@@ -45,18 +61,16 @@ function ScenarioSwitcher() {
               {d.name}
             </option>
           ))}
+          {userName && <option value={USER}>{userName} (imported)</option>}
         </select>
       </label>
       {asked !== null && (
         <div className="flex basis-full flex-wrap items-center gap-2 rounded-md border border-line bg-sunken px-3 py-2 text-[13px] text-ink" role="alertdialog" aria-label="Confirm switching company">
-          <span>Switch to {askedName}? Your draft, adopted changes, conditions and edited assumptions belong to the current company and will be discarded.</span>
+          <span className="wrap-anywhere">Switch to {askedName}? Your draft, adopted changes, conditions and edited assumptions will be discarded.</span>
           <Button
             size="sm"
             variant="danger"
-            onClick={() => {
-              setDemo(asked === SAMPLE ? null : asked);
-              setAsked(null);
-            }}
+            onClick={() => switchTo(asked)}
           >
             Switch and discard
           </Button>
@@ -65,11 +79,12 @@ function ScenarioSwitcher() {
           </Button>
         </div>
       )}
+      {error && <Notice tone="error" className="basis-full">{error}</Notice>}
     </>
   );
 }
 
-export function Header() {
+export function Header({ guideOpen, openGuide, closeGuide }: { guideOpen: boolean; openGuide: () => void; closeGuide: () => void }) {
   const view = useStore((s) => s.view);
   const setView = useStore((s) => s.setView);
   const name = useStore((s) => s.company.name);
@@ -93,11 +108,11 @@ export function Header() {
               <li key={v.id}>
                 <button
                   type="button"
-                  onClick={() => setView(v.id)}
-                  aria-current={view === v.id ? 'page' : undefined}
+                  onClick={() => { setView(v.id); closeGuide(); }}
+                  aria-current={!guideOpen && view === v.id ? 'page' : undefined}
                   className={cx(
                     'rounded-md px-3 py-1.5 text-[14px] font-medium transition-colors',
-                    view === v.id ? 'bg-accent-soft text-accent' : 'text-muted hover:bg-sunken hover:text-ink',
+                    !guideOpen && view === v.id ? 'bg-accent-soft text-accent' : 'text-muted hover:bg-sunken hover:text-ink',
                   )}
                 >
                   {v.label}
@@ -109,6 +124,7 @@ export function Header() {
 
         <div className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-2">
           <ScenarioSwitcher />
+          <CompanyFileControls openGuide={openGuide} onImported={closeGuide} />
           {demoDays !== null ? (
             <span className="text-[12.5px] text-muted" title="This demo scenario has a fixed horizon.">
               Horizon <span className="num font-medium text-ink">{demoDays} days</span>
@@ -137,7 +153,7 @@ export function Header() {
 }
 
 /** Bottom navigation for narrow screens. */
-export function MobileNav() {
+export function MobileNav({ guideOpen, closeGuide }: { guideOpen: boolean; closeGuide: () => void }) {
   const view = useStore((s) => s.view);
   const setView = useStore((s) => s.setView);
   return (
@@ -147,9 +163,9 @@ export function MobileNav() {
           <li key={v.id}>
             <button
               type="button"
-              onClick={() => setView(v.id)}
-              aria-current={view === v.id ? 'page' : undefined}
-              className={cx('flex w-full flex-col items-center gap-0.5 py-2 text-[11.5px] font-medium', view === v.id ? 'text-accent' : 'text-muted')}
+              onClick={() => { setView(v.id); closeGuide(); }}
+              aria-current={!guideOpen && view === v.id ? 'page' : undefined}
+              className={cx('flex w-full flex-col items-center gap-0.5 py-2 text-[11.5px] font-medium', !guideOpen && view === v.id ? 'text-accent' : 'text-muted')}
             >
               {v.icon}
               {v.label}

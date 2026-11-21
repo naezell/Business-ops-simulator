@@ -16,7 +16,7 @@ import {
 } from '@/services/derive';
 import { MONTHS, dayLabel, money, moneyCompact, num, percent, signedMoney, signedPoints, signedRelative } from '@/services/format';
 import { Card, DeltaText, Notice, Segmented, StatTile, cx } from '@/components/ui';
-import { SyntheticLabel } from '@/components/SyntheticLabel';
+import { CompanyDataLabel } from '@/components/CompanyDataLabel';
 import { LongRunCharts, YearlyTable } from '@/components/financials/LongRun';
 
 // ───────────────────────── KPI row ─────────────────────────
@@ -542,7 +542,7 @@ export function FinancialsPage() {
   const showDraft = hasDraft && which === 'draft';
   return (
     <div className="space-y-4">
-      <SyntheticLabel />
+      <CompanyDataLabel />
       {hasDraft && (
         <div className="flex flex-wrap items-center gap-3">
           <span className="text-[13px] text-muted">Showing</span>

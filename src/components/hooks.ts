@@ -7,13 +7,12 @@ export function useProjections() {
   const company = useStore((s) => s.company);
   const baselineActions = useStore((s) => s.baselineActions);
   const draftActions = useStore((s) => s.draftActions);
-  const industry = useStore((s) => s.industry);
   const draftResult = useStore((s) => s.draftResult);
   return useMemo(() => {
     const base = projectCompany(company, baselineActions, []);
     const full = projectCompany(company, baselineActions, draftActions);
     const ctx: LabelContext = { base, full, jobTypes: company.jobTypes };
-    const nameOf = nameLookup(full, industry, draftResult);
+    const nameOf = nameLookup(full, company.jobTypes, draftResult);
     return { base, full, ctx, nameOf };
-  }, [company, baselineActions, draftActions, industry, draftResult]);
+  }, [company, baselineActions, draftActions, draftResult]);
 }
