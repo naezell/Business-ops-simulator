@@ -4,7 +4,7 @@ import { buildCalendar } from '@/simulation';
 import { useStore } from '@/services/store';
 import { MONTHS, dayLabel, money, moneyCompact, num, percent, signedMoney, signedPoints, signed } from '@/services/format';
 import { Card, DeltaText, Segmented, cx } from '@/components/ui';
-import { YEAR_METRICS, longRunSeries, yearLabel, type YearMetric } from './longrun';
+import { YEAR_METRICS, longRunSeries, yearLabel, type YearMetric } from './long-run-data';
 import type { PeriodSummary } from '@/simulation/types';
 
 function fmt(m: YearMetric, v: number): string {

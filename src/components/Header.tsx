@@ -84,7 +84,9 @@ function ScenarioSwitcher() {
   );
 }
 
-export function Header({ guideOpen, openGuide, closeGuide }: { guideOpen: boolean; openGuide: () => void; closeGuide: () => void }) {
+export function Header({ guideOpen, openGuide, closeGuide, reviewControls }: {
+  guideOpen: boolean; openGuide: () => void; closeGuide: () => void; reviewControls: ReactNode;
+}) {
   const view = useStore((s) => s.view);
   const setView = useStore((s) => s.setView);
   const name = useStore((s) => s.company.name);
@@ -123,6 +125,7 @@ export function Header({ guideOpen, openGuide, closeGuide }: { guideOpen: boolea
         </nav>
 
         <div className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-2">
+          {reviewControls}
           <ScenarioSwitcher />
           <CompanyFileControls openGuide={openGuide} onImported={closeGuide} />
           {demoDays !== null ? (

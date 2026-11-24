@@ -178,6 +178,7 @@ export interface AppState extends Core {
   selectedDay: number;
   view: ViewId;
   study: StudyState;
+  activeReviewId: string | null;
 
   setView: (v: ViewId) => void;
   setSelectedDay: (d: number) => void;
@@ -198,6 +199,7 @@ export interface AppState extends Core {
   removeDraftByKey: (key: string) => void;
   /** Appends several planned actions through the same de-duplication as chips. Used by the optimizer. */
   applyPlannedActions: (actions: PlannedAction[], candidateId?: string) => void;
+  applyGuidedDecision: (patch: CompanyPatch, action: Action) => void;
   startStudy: (objective: Objective) => void;
   cancelStudy: () => void;
   /** Applies a strategy's dated actions and rules to the draft (rules de-duplicated by id). */
@@ -218,6 +220,8 @@ export interface AppState extends Core {
   setDemoScenario: (id: string | null) => void;
   setUserCompany: (company: CompanyConfig, assumedPaths: string[]) => void;
   activateUserCompany: () => void;
+  activateReview: (id: string, state: PersistedState) => void;
+  setActiveReviewId: (id: string) => void;
 }
 
 interface Built {
@@ -254,7 +258,7 @@ function buildAll(core: Core): Built {
   };
 }
 
-function initial(): Built & { selectedDay: number; view: ViewId } {
+function initial(): Built & { selectedDay: number; view: ViewId; activeReviewId?: string } {
   const stored = loadPersisted();
   if (stored) {
     try {
@@ -275,7 +279,7 @@ function initial(): Built & { selectedDay: number; view: ViewId } {
       const built = buildAll(core);
       // A draft that no longer simulates counts as unusable stored data.
       if (built.draftIssues.some((i) => i.severity === 'error')) throw new Error('stored draft invalid');
-      return { ...built, selectedDay: stored.selectedDay, view: stored.view };
+      return { ...built, selectedDay: stored.selectedDay, view: stored.view, activeReviewId: stored.activeReviewId };
     } catch {
       if (stored.userCompany) {
         try {
@@ -369,11 +373,16 @@ export const useStore = create<AppState>()((set, get) => {
     set({ baselineResult, draftResult, baselineIssues, draftIssues, pending: false });
   }
 
-  function activateCompany(core: Core, requireStorage = false): void {
+  function activateCompany(core: Core, requireStorage = false, review?: { id: string; selectedDay: number; view: ViewId }): void {
     const current = get();
     const built = buildAll(core);
-    if (requireStorage && !savePersisted(persistenceSnapshot(core, 0, current.view))) {
-      throw new Error('This browser could not save the company. Check that local storage is available and has room.');
+    if (review && built.draftIssues.some((issue) => issue.severity === 'error')) {
+      throw new Error('This review contains a plan that could not be simulated. Your current work is still open.');
+    }
+    const selectedDay = Math.min(review?.selectedDay ?? 0, built.baselineResult.horizonDays - 1);
+    const view = review?.view ?? current.view;
+    if (requireStorage && !savePersisted(persistenceSnapshot(core, selectedDay, view, review?.id))) {
+      throw new Error(`This browser could not save the ${review ? 'working session' : 'company'}. Check that local storage is available and has room.`);
     }
     if (timer) clearTimeout(timer);
     timer = null;
@@ -385,13 +394,15 @@ export const useStore = create<AppState>()((set, get) => {
       company: built.company,
       horizonDays: built.baselineResult.horizonDays,
       draftActions: core.draft.actions,
-      editedPaths: new Set(),
+      editedPaths: new Set(Object.keys(core.patch)),
       baselineResult: built.baselineResult,
       draftResult: built.draftResult,
       baselineIssues: built.baselineIssues,
       draftIssues: built.draftIssues,
       pending: false,
-      selectedDay: 0,
+      selectedDay,
+      view,
+      activeReviewId: review?.id ?? null,
       study: { status: 'idle', objective: current.study.objective, progress: null, result: null, partial: false, resultKey: null, appliedIds: [], error: null },
     });
   }
@@ -410,6 +421,7 @@ export const useStore = create<AppState>()((set, get) => {
     pending: false,
     selectedDay: Math.min(init.selectedDay, init.baselineResult.horizonDays - 1),
     view: init.view,
+    activeReviewId: init.activeReviewId ?? null,
     study: { status: 'idle', objective: 'net-profit', progress: null, result: null, partial: false, resultKey: null, appliedIds: [], error: null },
 
     setView: (view) => set({ view }),
@@ -454,6 +466,9 @@ export const useStore = create<AppState>()((set, get) => {
         else list.push({ day, action: pa.action });
       }
       commit({ draft: { ...s0.draft, actions: list } }, candidateId ? { study: { ...s0.study, appliedIds: [...s0.study.appliedIds, candidateId] } } : {});
+    },
+    applyGuidedDecision: (patch, action) => {
+      commit({ patch: { ...get().patch, ...patch }, draft: { actions: [{ day: 0, action }], rules: [] } });
     },
     startStudy: (objective) => {
       const s = get();
@@ -563,17 +578,40 @@ export const useStore = create<AppState>()((set, get) => {
         ...freshCore(s.userCompany.company.industryId), companySource: 'user', userCompany: s.userCompany, horizonMonths: s.horizonMonths,
       });
     },
+    activateReview: (id, state) => {
+      const core = structuredClone(coreOf(state));
+      if (core.companySource !== 'user') core.userCompany = get().userCompany;
+      if (!HORIZON_OPTIONS.some((months) => months === core.horizonMonths) ||
+          (core.companySource === 'demo' && !demoScenarioOf(getIndustry(core.industryId), core.demoScenarioId))) {
+        throw new Error('This review’s company or time horizon is no longer available.');
+      }
+      activateCompany(core, true, { id, view: state.view, selectedDay: state.selectedDay });
+    },
+    setActiveReviewId: (id) => set({ activeReviewId: id }),
   };
 });
 
-function persistenceSnapshot(core: Core, selectedDay: number, view: ViewId): PersistedState {
-  return { version: STORAGE_VERSION, ...coreOf(core), selectedDay, view };
+function persistenceSnapshot(core: Core, selectedDay: number, view: ViewId, activeReviewId?: string | null): PersistedState {
+  return { version: STORAGE_VERSION, ...coreOf(core), selectedDay, view, ...(activeReviewId ? { activeReviewId } : {}) };
+}
+
+/** Captures an independent copy of the current comparison, without simulation results. */
+export function currentReviewSnapshot(s: AppState): PersistedState {
+  const snapshot = persistenceSnapshot(s, s.selectedDay, s.view);
+  if (snapshot.companySource !== 'user') snapshot.userCompany = null;
+  return structuredClone(snapshot);
+}
+
+export function validateReviewSnapshot(s: AppState): void {
+  const { baseline, draft } = buildScenarios(s.industry, coreOf(s));
+  const issue = [...validateScenario(baseline), ...validateScenario(draft)].find((item) => item.severity === 'error');
+  if (issue) throw new Error(`Fix the issue in this plan before saving the review. ${issue.message}`);
 }
 
 // Persist decisions and edits (debounced). An import also writes synchronously before activation.
 useStore.subscribe((s) => {
   if (persistTimer) clearTimeout(persistTimer);
-  persistTimer = setTimeout(() => savePersisted(persistenceSnapshot(s, s.selectedDay, s.view)), 250);
+  persistTimer = setTimeout(() => savePersisted(persistenceSnapshot(s, s.selectedDay, s.view, s.activeReviewId)), 250);
 });
 
 /** True when the draft differs from the baseline. */
