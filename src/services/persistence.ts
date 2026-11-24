@@ -41,6 +41,8 @@ export interface PersistedState {
   userCompany: UserCompany | null;
   selectedDay: number;
   view: ViewId;
+  /** The named review currently open in the working session, when applicable. */
+  activeReviewId?: string;
 }
 
 const isObj = (x: unknown): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x);
@@ -133,6 +135,7 @@ export function migratePersisted(data: unknown): PersistedState | null {
     userCompany,
     selectedDay: isFiniteNum(data.selectedDay) ? Math.max(0, Math.floor(data.selectedDay)) : 0,
     view,
+    ...(typeof data.activeReviewId === 'string' && data.activeReviewId ? { activeReviewId: data.activeReviewId } : {}),
   };
 }
 

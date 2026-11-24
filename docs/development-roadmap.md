@@ -47,7 +47,9 @@ Plan and task ids: `docs/digital-twin/implementation-plan.md`.
 | Engine | Cross-run draw tables (`drawCache`) — about 20% faster default optimization (≈ 9 s in bundled Node on the E2 container), results unchanged | `tests/simulation/draw-cache.test.ts` |
 | Data | Landscaping industry pack and calibrated synthetic sample company; parameter metadata with provenance | `tests/unit/landscaping-data.test.ts` |
 | UI | App shell, scenario bar (baseline vs draft), Operations (map, routes, scrubber, crew cards, timeline), Financials (P&L, cash, bridge, job-type profitability), Business (decisions + assumptions with provenance) | browser-verified by Playwright script during development; no automated UI tests in the repo |
+| UI | Guided client review for prices, routing, or a new crew. Uses the selected company, optional figures for the current plan, and a short comparison powered by the existing engine. | Browser smoke check for guided setup and comparison |
 | Data | Browser-only company JSON import and export, CSV roster templates, validation review, per-field provenance, and persistence v5 migration | `tests/unit/company-files.test.ts`, `tests/unit/company-persistence.test.ts` |
+| Data | Named local client reviews preserve the current plan, what-if changes, company inputs and assumptions, conditions, and notes. | Saved review persistence and restore tests |
 | Infra | Import-boundary test, Web Worker bridge for optimization | `tests/architecture`, `tests/optimization/worker-bridge.test.ts` |
 
 ## Active work
